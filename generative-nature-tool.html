@@ -1,0 +1,1352 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Generative Nature Tool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --bg: #000; --text: #f5f5f5; --muted: rgba(255,255,255,.62); --faint: rgba(255,255,255,.45);
+    --line: rgba(255,255,255,.12); --glass: rgba(14,14,14,.62); --glass-strong: rgba(20,20,20,.75);
+    --gap: 24px;
+  }
+  html, body { height: 100%; }
+  button, select, input { font-family: inherit; }
+  :root { --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); overflow: hidden;
+    font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  /* ---------- stage: full window, figure centred and fitted to the height ---------- */
+  .stage { position: fixed; inset: 0; background: var(--bg); padding: 120px 340px 96px; }
+  body.fmt-window .stage { padding: 0; }
+  body.fmt-window #stage-outline { display: none; }
+  .stage-inner { position: relative; width: 100%; height: 100%; }
+  #stage-svg { width: 100%; height: 100%; display: block; }
+  #stage-glow {
+    position: absolute; left: 0; top: 0; width: 50%; height: 50%; display: none; pointer-events: none;
+    transform: scale(2); transform-origin: 0 0; mix-blend-mode: screen; will-change: filter, transform;
+  }
+  body.glow-on #stage-glow { display: block; }
+
+  /* ---------- soft black fades behind the header and the player (preview only, not exported) ---------- */
+  .scrim { position: fixed; left: 0; right: 0; z-index: 5; pointer-events: none; }
+  .scrim-top { top: 0; height: 220px;
+    background: linear-gradient(to bottom, rgba(0,0,0,.97) 0%, rgba(0,0,0,.9) 45%, rgba(0,0,0,.45) 75%, rgba(0,0,0,0) 100%); }
+  .scrim-bottom { bottom: 0; height: 110px;
+    background: linear-gradient(to top, rgba(0,0,0,.6) 0%, rgba(0,0,0,.3) 50%, rgba(0,0,0,0) 100%); }
+  /* full-window gradient background: fade into the gradient's own colours instead of black */
+  body.fmt-window.bg-gradient .scrim-top {
+    background: linear-gradient(to bottom, rgba(0,96,100,.97) 0%, rgba(0,96,100,.9) 45%, rgba(0,96,100,.45) 75%, rgba(0,96,100,0) 100%); }
+  body.fmt-window.bg-gradient .scrim-bottom {
+    background: linear-gradient(to top, rgba(14,54,56,.7) 0%, rgba(14,54,56,.35) 50%, rgba(14,54,56,0) 100%); }
+
+  /* ---------- floating chrome ---------- */
+  .glass {
+    background: linear-gradient(160deg, rgba(255,255,255,.10), rgba(255,255,255,.03) 45%, rgba(255,255,255,.05));
+    border: .5px solid rgba(255,255,255,.16); border-radius: 16px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.18), inset 0 0 0 1px rgba(255,255,255,.03), 0 12px 40px rgba(0,0,0,.45);
+    backdrop-filter: blur(36px) saturate(1.6) brightness(.85); -webkit-backdrop-filter: blur(36px) saturate(1.6) brightness(.85);
+  }
+  .ui { transition: opacity .25s ease; }
+  body.ui-hidden .ui, body.no-anim .transport { opacity: 0; pointer-events: none; }
+
+  .topbar {
+    position: fixed; top: var(--gap); left: var(--gap); right: var(--gap); z-index: 10;
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; pointer-events: none;
+  }
+  .topbar > * { pointer-events: auto; }
+  .brand { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .brand-row { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -.01em; color: #fff; white-space: nowrap; }
+  h1, #gen-desc, .export small { text-shadow: 0 0 6px rgba(0,0,0,.45); }
+  #gen-desc { margin: 0; max-width: 520px; font-size: 13px; line-height: 1.45; color: var(--muted); }
+
+  .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tab {
+    padding: 7px 13px; border-radius: 999px; border: 1px solid transparent; background: transparent;
+    color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    transition: color .15s ease, background .15s ease, border-color .15s ease;
+  }
+  .tab:hover { color: #fff; background: rgba(255,255,255,.06); }
+  .tab.active { color: #000; background: #fff; }
+
+  .export { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .export-row { display: flex; gap: 8px; }
+  .export small { text-align: right; max-width: 420px; }
+  .fmt { display: flex; align-items: center; gap: 8px; padding: 0 6px 0 14px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .fmt select {
+    appearance: none; -webkit-appearance: none; background: transparent; border: none; color: #fff;
+    font: inherit; font-size: 13px; padding: 8px 22px 8px 4px; cursor: pointer; outline: none;
+    background-image: linear-gradient(45deg, transparent 50%, rgba(255,255,255,.7) 50%), linear-gradient(135deg, rgba(255,255,255,.7) 50%, transparent 50%);
+    background-position: right 9px center, right 5px center; background-size: 4px 4px; background-repeat: no-repeat;
+  }
+  .fmt select option { background: #111; color: #fff; }
+
+  .panel {
+    position: fixed; top: 50%; transform: translateY(-50%); z-index: 9; width: 296px;
+    max-height: calc(100vh - 340px); overflow-y: auto; padding: 8px;   /* centred, so it always clears the header (>= 170px from the top) */
+    display: flex; flex-direction: column; gap: 8px;
+    scrollbar-width: thin; scrollbar-color: #333 transparent;
+  }
+  .panel.glass { box-shadow: inset 0 1px 0 rgba(255,255,255,.18), inset 0 0 0 1px rgba(255,255,255,.03); }
+  .panel-left { left: var(--gap); }
+  .panel-right { right: var(--gap); }
+  h3 { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  #params, #anim { display: flex; flex-direction: column; gap: 8px; }
+  h3 { padding: 4px 6px 0; }
+
+  .transport {
+    position: fixed; left: 50%; bottom: var(--gap); transform: translateX(-50%); z-index: 10;
+    width: min(560px, calc(100vw - 2 * var(--gap))); padding: 8px 16px 8px 8px; border-radius: 999px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  #play {
+    width: 34px; height: 34px; flex: none; border-radius: 50%; border: none; cursor: pointer;
+    background: #fff; color: #000; font-size: 12px; font-weight: 700;
+  }
+  #play:disabled { opacity: .35; cursor: default; }
+  #scrub { flex: 1; }
+  #time { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); min-width: 96px; text-align: right; }
+
+  #ui-toggle {
+    position: fixed; right: var(--gap); bottom: var(--gap); z-index: 11;
+    height: 34px; padding: 0 14px; border-radius: 999px; cursor: pointer;
+    color: var(--muted); font-size: 12px; font-weight: 600;
+  }
+  #ui-toggle:hover { color: #fff; }
+
+  /* ---------- controls ---------- */
+  .control-group { display: flex; flex-direction: column; gap: 7px; }
+  label { font-size: 13px; font-weight: 500; display: flex; justify-content: space-between; color: #d4d4d4; }
+  label .v { color: var(--muted); font-family: var(--mono); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+  input[type="range"] { width: 100%; accent-color: #fff; cursor: pointer; }
+  .checkbox-group { display: flex; align-items: center; gap: 10px; justify-content: flex-start; cursor: pointer; }
+  .checkbox-group input { accent-color: #fff; width: 16px; height: 16px; cursor: pointer; margin: 0; }
+  small { color: var(--faint); font-size: 11px; line-height: 1.4; }
+  .ctrl-section { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border: 1px solid rgba(255,255,255,.10); border-radius: 12px; background: rgba(0,0,0,.18); }
+  .ctrl-section-title { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: -4px; }
+  .is-disabled { opacity: .3; }
+  .seg { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: rgba(255,255,255,.06); border: .5px solid var(--line); }
+  .seg button {
+    flex: 1; padding: 6px 8px; border: none; border-radius: 999px; background: transparent; cursor: pointer;
+    color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap;
+  }
+  .seg button:hover { color: #fff; }
+  .seg button.on { background: #fff; color: #000; }
+  .is-disabled input { cursor: not-allowed; }
+
+  button.btn {
+    padding: 9px 16px; border: 1px solid #fff; border-radius: 999px; cursor: pointer;
+    font-weight: 600; font-size: 13px; white-space: nowrap;
+    background: #fff; color: #000; transition: background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  button.btn:hover { background: #d9d9d9; border-color: #d9d9d9; }
+  button.btn.secondary { background: transparent; color: #fff; border-color: rgba(255,255,255,.35); }
+  button.btn.secondary:hover { border-color: #fff; background: rgba(255,255,255,.08); }
+  button.btn:disabled { opacity: .45; cursor: wait; }
+  #status { min-height: 0; color: var(--muted); }
+
+  /* ---------- narrow windows: everything stacks and the page scrolls ---------- */
+  @media (max-width: 900px) {
+    body { overflow: auto; display: flex; flex-direction: column; }
+    .topbar { order: -1; }
+    .stage, body.fmt-window .stage { flex: none; position: relative; height: 70vh; padding: 12px; }
+    .topbar { position: relative; top: 0; left: 0; right: 0; padding: 16px; flex-direction: column; }
+    .export { align-items: flex-start; }
+    .export-row { flex-wrap: wrap; }
+    .export small { text-align: left; }
+    .panel { position: relative; top: 0; left: 0; right: 0; transform: none; width: auto; max-height: none; margin: 0 16px 16px; }
+    .transport { position: sticky; bottom: 16px; left: 0; transform: none; margin: 0 auto 16px; }
+    #ui-toggle { display: none; }
+    .scrim { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="stage-inner">
+  <svg id="stage-svg" xmlns="http://www.w3.org/2000/svg">
+    <defs><clipPath id="stage-clip"><rect id="stage-clip-rect"/></clipPath></defs>
+    <defs id="stage-defs"></defs>
+    <defs id="style-defs"></defs>
+    <g clip-path="url(#stage-clip)"><rect id="stage-bg"/><g id="stage-root"></g></g>
+    <rect id="stage-outline" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1" vector-effect="non-scaling-stroke" stroke-dasharray="4 4"/>
+  </svg>
+  <!-- preview glow: a copy of the figure at half resolution, blurred by the GPU (CSS filter) and
+       screen-blended over the sharp lines. Exports use the equivalent SVG filter instead. -->
+  <svg id="stage-glow" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><g clip-path="url(#stage-clip)" id="glow-root"></g></svg>
+  </div>
+</div>
+
+<div class="scrim scrim-top ui"></div>
+<div class="scrim scrim-bottom ui"></div>
+
+<header class="topbar ui">
+  <div class="brand">
+    <div class="brand-row">
+      <h1>Generative Nature Tool</h1>
+      <nav class="tabs" id="tabs"></nav>
+    </div>
+    <p id="gen-desc"></p>
+  </div>
+  <div class="export">
+    <div class="export-row">
+      <label class="fmt glass" title="Formato del riquadro (anteprima ed export)">Formato
+        <select id="format">
+          <option value="window">Finestra</option><option value="1:1">1:1</option><option value="16:9">16:9</option>
+          <option value="9:16">9:16</option><option value="4:5">4:5</option>
+        </select>
+      </label>
+      <button class="btn" id="exp-svg">Scarica SVG</button>
+      <button class="btn secondary" id="exp-svg-anim">SVG animato</button>
+      <button class="btn secondary" id="exp-png">Sequenza PNG</button>
+    </div>
+    <small id="png-note"></small>
+    <small id="status"></small>
+  </div>
+</header>
+
+<aside class="panel panel-left glass ui">
+  <h3>Stile</h3>
+  <div id="style" class="ctrl-section"></div>
+  <h3>Parametri</h3>
+  <div id="params"></div>
+</aside>
+
+<aside class="panel panel-right glass ui">
+  <h3>Animazione</h3>
+  <div id="anim"></div>
+</aside>
+
+<div class="transport glass ui">
+  <button id="play" title="Play / Pausa (spazio)">❚❚</button>
+  <input type="range" id="scrub" min="0" max="1000" value="0">
+  <span id="time">0.00s / 0.00s</span>
+</div>
+
+<button id="ui-toggle" class="glass" title="Nascondi / mostra pannelli (H)">Nascondi UI</button>
+
+<script>
+/* =========================================================================
+   CONFIG
+   ========================================================================= */
+const PNG_PRESET = { fps: 30, longSide: 1920 };   // fixed PNG sequence preset (transparent bg)
+const SVG_LONG_SIDE = 1080;                      // width/height written into exported SVGs
+
+/* =========================================================================
+   HELPERS
+   ========================================================================= */
+const TAU = Math.PI * 2;
+const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+const easeInOut = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const easeOutBack = t => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+const smooth = t => { t = clamp01(t); return t * t * (3 - 2 * t); };
+const waveM = (phi, w) => 0.5 - 0.5 * Math.cos(TAU * (phi - w));   // 0..1 travelling band
+
+function attrs(a) {
+  let s = '';
+  for (const k in a) {
+    let v = a[k];
+    if (v === undefined || v === null) continue;
+    if (typeof v === 'number') v = Math.round(v * 1000) / 1000;
+    s += ` ${k}="${v}"`;
+  }
+  return s;
+}
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/*
+  Every generator's build(params) returns a MODEL:
+  {
+    layers: [{ a: {group attrs}, items: [ITEM, ...] }],
+    pivot: [x, y],                 // centre for ambient rotation / breathing
+    viewBox(rotating) -> [x,y,w,h],
+    waveScale: number              // circles also pulse in size with the wave
+  }
+  ITEM = {
+    t: tag, a: attrs,
+    k: 'draw' | 'pop' | 'fade',    // how it appears during growth
+    b, e: growth window (0..1)     // starts appearing at b, complete at e
+    w: wave offset (0..1)          // ambient shimmer phase; omit = no shimmer
+    dyn(g) -> attrs override       // optional, for morphing geometry (Koch)
+    smil(dur) -> '<animate…/>'     // optional, morph for the animated SVG
+  }
+*/
+
+/* =========================================================================
+   STYLE (shared by every page): background + line paint
+   Lines always paint with url(#lineFill), a userSpaceOnUse gradient laid over the frame: two equal
+   stops for a solid colour, the 4-colour ramp at 45 degrees otherwise (userSpaceOnUse also works on
+   perfectly horizontal/vertical lines, where a bounding-box gradient would vanish).
+   ========================================================================= */
+const LINE_PAINT = 'url(#lineFill)';
+const BG_GRADIENT = ['#006064', '#0E3638'];                       // top -> bottom
+const LINE_GRADIENT = ['#E7FF85', '#FFA1A7', '#ABACFF', '#5AD7ED']; // 45 degrees, bottom-left -> top-right
+const style = { bg: 'black', line: 'white', lineColor: '#ffffff', glow: false, glowAmt: 40 };
+const STYLE_DEFS = [
+  { id: 'bg', type: 'choice', label: 'Sfondo', options: [['black', 'Nero'], ['gradient', 'Gradiente']] },
+  { id: 'line', type: 'choice', label: 'Colore linee', options: [['white', 'Bianco'], ['custom', 'Personalizzato'], ['gradient', 'Gradiente']] },
+  { id: 'lineColor', type: 'color', label: 'Colore personalizzato', when: v => v.line === 'custom' },
+  { id: 'glow', type: 'checkbox', label: 'Bagliore' },
+  { id: 'glowAmt', label: 'Intensità bagliore', min: 0, max: 100, step: 1, unit: '%', dependsOn: 'glow' },
+];
+function styleDefs(vb) {
+  const [x, y, w, h] = vb, L = (w + h) / 2;
+  const stops = style.line === 'gradient'
+    ? LINE_GRADIENT.map((c, i) => `<stop offset="${(i / (LINE_GRADIENT.length - 1)).toFixed(3)}" stop-color="${c}"/>`).join('')
+    : (c => `<stop offset="0" stop-color="${c}"/><stop offset="1" stop-color="${c}"/>`)(style.line === 'custom' ? style.lineColor : '#ffffff');
+  const f = n => +n.toFixed(3);
+  return `<linearGradient id="lineFill" gradientUnits="userSpaceOnUse" x1="${f(x)}" y1="${f(y + h)}" x2="${f(x + L)}" y2="${f(y + h - L)}">${stops}</linearGradient>`
+    + glowFilter(vb)
+    + `<linearGradient id="bgFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${BG_GRADIENT[0]}"/><stop offset="1" stop-color="${BG_GRADIENT[1]}"/></linearGradient>`;
+}
+// GLOW: one light filter on the whole figure (not per line, so it stays cheap): a blurred copy of the
+// lines in their own colours, alpha boosted a little, under the sharp lines. Sizes are relative to
+// the frame, so preview and exports look the same at any resolution.
+function glowFilter(vb) {
+  if (!style.glow) return '';
+  const k = style.glowAmt / 100, unit = Math.min(vb[2], vb[3]) / 1000, f = n => +n.toFixed(4);
+  const sigma = (1 + 5 * k) * unit, slope = 1 + 1.5 * k;
+  return `<filter id="glowF" filterUnits="userSpaceOnUse" x="${f(vb[0])}" y="${f(vb[1])}" width="${f(vb[2])}" height="${f(vb[3])}" color-interpolation-filters="sRGB">`
+    + `<feGaussianBlur in="SourceGraphic" stdDeviation="${f(sigma)}" result="b"/>`
+    + `<feComponentTransfer in="b" result="g"><feFuncA type="linear" slope="${f(slope)}"/></feComponentTransfer>`
+    + `<feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+}
+const glowWrap = body => style.glow ? `<g filter="url(#glowF)">${body}</g>` : body;
+const bgPaint = () => style.bg === 'gradient' ? 'url(#bgFill)' : '#000000';
+const bgRect = vb => `<rect x="${vb[0]}" y="${vb[1]}" width="${vb[2]}" height="${vb[3]}" fill="${bgPaint()}"/>`;
+
+/* =========================================================================
+   GENERATOR 1 — KOCH CRYSTAL (dendrite inside a Koch snowflake)
+   A hexagonal ice dendrite (recursive 60-degree branches) inside a Koch snowflake whose six tips
+   sit on the crystal's main arms. Build-up: the crystal grows out from the centre while the Koch
+   outline is traced and then unfolds its iterations, both finishing together.
+   ========================================================================= */
+const kochCrystal = {
+  id: 'kochcrystal', name: 'Koch Crystal', file: 'Koch_Crystal', accent: ['#3cb4c2', '#2f94a1'],
+  desc: 'Dendrite di ghiaccio a simmetria esagonale dentro un fiocco di Koch: i rami crescono mentre il contorno si dispiega.',
+  sym: 60, anim: { rot: 60, wave: 0, breathe: 0 }, zoomUnit: 'livelli', noBreathe: true,
+  defs: '',
+  params: [
+    { type: 'section' },
+    { id: 'showKoch', type: 'checkbox', label: 'Mostra fiocco di Koch', value: true },
+    { id: 'depth', label: 'Iterazioni Koch', min: 0, max: 5, step: 1, value: 3, dependsOn: 'showKoch' },
+    { type: 'section' },
+    { id: 'showCrystal', type: 'checkbox', label: 'Mostra cristallo', value: true },
+    { id: 'size', label: 'Dimensione cristallo', min: 30, max: 150, step: 1, value: 100, unit: '%', dependsOn: 'showCrystal',
+      note: 'A 100% i rami principali toccano le punte del fiocco di Koch.' },
+    { id: 'branches', label: 'Numero di rami laterali', min: 2, max: 12, step: 1, value: 3, dependsOn: 'showCrystal' },
+    { id: 'len', label: 'Lunghezza rami laterali', min: 15, max: 80, step: 1, value: 45, unit: '%', dependsOn: 'showCrystal' },
+    { id: 'taper', label: 'Accorciamento verso la punta', min: 10, max: 100, step: 1, value: 70, unit: '%', dependsOn: 'showCrystal' },
+    { type: 'section', title: 'Generale' },
+    { id: 'stroke', label: 'Spessore linee', min: 0.5, max: 6, step: 0.25, value: 1, unit: ' px' },
+  ],
+  build(p) {
+    const cx = 500, cy = 500, R = 400, A = Math.PI / 3;
+    const L = R * p.size / 100, S = Math.max(R, L) * 1.12, u = (S * 2) / 850;
+    const line = { fill: 'none', stroke: LINE_PAINT, 'stroke-width': p.stroke * u, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
+
+    // ---- crystal: main arm + n side branches per side, recursion depth 3
+    const n = p.branches, side = p.len / 100, tp = p.taper / 100, segs = [];
+    const br = (x, y, len, ang, depth, d0) => {
+      if (depth === 0 || len < 2) return;
+      const ex = x + len * Math.cos(ang), ey = y + len * Math.sin(ang);
+      segs.push({ x, y, ex, ey, d0, d1: d0 + len });
+      if (depth > 1) {
+        for (let i = 1; i <= n; i++) {
+          const t = i / (n + 0.5);
+          const px = x + len * t * Math.cos(ang), py = y + len * t * Math.sin(ang);
+          const sl = len * side * (1 - t * tp);
+          br(px, py, sl, ang - A, depth - 1, d0 + len * t);
+          br(px, py, sl, ang + A, depth - 1, d0 + len * t);
+        }
+      }
+    };
+    for (let i = 0; i < 6; i++) br(cx, cy, L, i * A, 3, 0);
+    let maxD = 0; for (const s of segs) if (s.d1 > maxD) maxD = s.d1;
+    const items = !p.showCrystal ? [] : segs.map(s => ({ t: 'line', k: 'draw', b: s.d0 / maxD, e: s.d1 / maxD,
+      a: { x1: s.x, y1: s.y, x2: s.ex, y2: s.ey, ...line } }));
+
+    // ---- Koch snowflake, tips on the horizontal and diagonal axes (a0 = 0)
+    const D = p.depth, a0 = 0;
+    const V = k => ({ x: cx + R * Math.cos(a0 + k * TAU / 3), y: cy + R * Math.sin(a0 + k * TAU / 3) });
+    const p1 = V(0), p2 = V(1), p3 = V(2);
+    const cosA = Math.cos(-Math.PI / 3), sinA = Math.sin(-Math.PI / 3);
+    function seg(ax, ay, bx, by, level, F, out) {
+      if (level === D) { out.push(ax, ay); return; }
+      const dx = bx - ax, dy = by - ay;
+      const pbx = ax + dx / 3, pby = ay + dy / 3, pcx = ax + 2 * dx / 3, pcy = ay + 2 * dy / 3;
+      const dxb = pcx - pbx, dyb = pcy - pby;
+      const tx = pbx + cosA * dxb - sinA * dyb, ty = pby + sinA * dxb + cosA * dyb;
+      const mx = (pbx + pcx) / 2, my = (pby + pcy) / 2, f = F[level];
+      const tipx = mx + (tx - mx) * f, tipy = my + (ty - my) * f;
+      seg(ax, ay, pbx, pby, level + 1, F, out);
+      seg(pbx, pby, tipx, tipy, level + 1, F, out);
+      seg(tipx, tipy, pcx, pcy, level + 1, F, out);
+      seg(pcx, pcy, bx, by, level + 1, F, out);
+    }
+    function pathD(F) {
+      const pts = [];
+      seg(p1.x, p1.y, p2.x, p2.y, 0, F, pts);
+      seg(p2.x, p2.y, p3.x, p3.y, 0, F, pts);
+      seg(p3.x, p3.y, p1.x, p1.y, 0, F, pts);
+      let d = 'M' + pts[0].toFixed(1) + ' ' + pts[1].toFixed(1);
+      for (let i = 2; i < pts.length; i += 2) d += 'L' + pts[i].toFixed(1) + ' ' + pts[i + 1].toFixed(1);
+      return d + 'Z';
+    }
+    const fullD = pathD(new Array(D).fill(1));
+    // first 1/(D+1) of the build-up traces the triangle, the rest unfolds one iteration after another
+    const e0 = 1 / (D + 1);
+    const factorsAt = g => Array.from({ length: D }, (_, k) => easeInOut(clamp01((g - e0) / (1 - e0) * D - k)));
+    const kochItem = { t: 'path', k: 'draw', b: 0, e: e0, bb: [cx, cy, R], a: { ...line, d: fullD } };
+    if (D > 0) {
+      kochItem.dyn = g => ({ d: g >= 1 ? fullD : pathD(factorsAt(g)) });
+      kochItem.smil = dur => {
+        const vals = [];
+        for (let j = 0; j <= D; j++) vals.push(pathD(Array.from({ length: D }, (_, k) => k < j ? 1 : 0)));
+        const kt = vals.map((_, j) => (j / D).toFixed(4)).join(';');
+        const ks = new Array(D).fill('0.42 0 0.58 1').join(';');
+        return `<animate attributeName="d" begin="${(e0 * dur).toFixed(3)}s" dur="${((1 - e0) * dur).toFixed(3)}s" fill="freeze" calcMode="spline" keyTimes="${kt}" keySplines="${ks}" values="${vals.join(';')}"/>`;
+      };
+    }
+    if (p.showKoch) items.push(kochItem);
+
+    return { layers: [{ a: {}, items }], pivot: [cx, cy], viewBox: () => [cx - S, cy - S, S * 2, S * 2], waveScale: 0,
+      // nested copies at 1/3 scale, unrotated: the crystal arms of every copy line up
+      zoom: { type: 'copies', S: 3, A: 0, radius: Math.max(R, L), innerR: Math.min(R / Math.sqrt(3), L / (n + 0.5)), minR: p.stroke * u * 2 } };
+  }
+};
+
+/* =========================================================================
+   GENERATOR 3 — GIRASOLE (fillotassi aurea)
+   ========================================================================= */
+const sunflower = {
+  id: 'sunflower', name: 'Girasole Aureo', file: 'Girasole_Aureo', accent: ['#f39c12', '#d35400'],
+  desc: 'Disposizione naturale dei semi del girasole: spirale di Fermat con angolo aureo (137.5°).',
+  sym: 360, anim: { rot: 0, wave: 60, breathe: 0 }, zoomUnit: 'passi',
+  defs: `
+    <radialGradient id="sun-grad" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fff5cc"/><stop offset="50%" stop-color="#f39c12"/><stop offset="100%" stop-color="#d35400"/>
+    </radialGradient>`,
+  params: [
+    { id: 'num', label: 'Numero di semi', min: 50, max: 3000, step: 10, value: 500 },
+    { id: 'spread', label: 'Compattezza', min: 5, max: 25, step: 0.5, value: 12 },
+    { id: 'size', label: 'Grandezza semi', min: 1, max: 12, step: 0.5, value: 5.5 },
+    { id: 'angle', label: 'Angolo', min: 137, max: 138, step: 0.001, value: 137.508, unit: '°',
+      note: 'La fillotassi del girasole usa l\'angolo aureo ≈ 137.5° (360° / φ²): ogni seme ruota di questo angolo rispetto al precedente.' },
+    { id: 'goldenAngle', type: 'button', label: 'Imposta angolo aureo (137.5°)', run: v => { v.angle = 137.508; } },
+  ],
+  build(p) {
+    const N = p.num, c = p.spread, s = p.size, ga = p.angle * Math.PI / 180, cx = 500, cy = 500;
+    const items = [];
+    for (let i = 1; i <= N; i++) {
+      const r = c * Math.sqrt(i), th = i * ga;
+      const size = s * Math.max(0.3, Math.min(1.5, Math.sqrt(i) / 12));
+      const b = (i - 1) / N * 0.88;
+      items.push({ t: 'circle', k: 'pop', b, e: b + 0.12, w: Math.sqrt(i / N),
+        a: { cx: cx + r * Math.cos(th), cy: cy + r * Math.sin(th), r: size, fill: LINE_PAINT } });
+    }
+    /*
+      ZOOM: the same Fermat/Vogel phyllotaxis as the still flower (r = c*sqrt(n), theta = n*angle),
+      with a continuous index u = n + t: every seed keeps its angle and slides straight outward while
+      new seeds are born at the centre (the flower keeps growing). Advancing t by F seeds turns the
+      pattern by F*angle, which for a Fibonacci-like F is a tiny residual 'res': a slow compensating
+      rotation res*t/F makes the frame at t=F identical to t=0 -> seamless loop, constant density.
+      Seeds grow in from nothing at the centre and shrink to nothing at the outer edge (u = N).
+    */
+    const gaDeg = p.angle;
+    let F = 1, res = 0, bestErr = Infinity;
+    for (let f = 8; f <= 40; f++) {
+      const e = ((f * gaDeg) % 360 + 540) % 360 - 180;
+      if (Math.abs(e) < bestErr) { bestErr = Math.abs(e); F = f; res = e; }
+    }
+    // seeds grow in over the first `ramp` seeds and shrink away over the last `rampOut` seeds
+    const ramp = Math.min(0.001 * N + 5, N / 3);       // grow-in at the centre
+    const rampOut = Math.min(0.8 * N + 20, N / 2);    // shrink-out at the edge (more gradual)
+    const sizeU = u => u <= 0 || u >= N ? 0
+      : s * Math.max(0.6, Math.min(1.5, Math.sqrt(u) / 12)) * smooth(u / ramp) * smooth((N - u) / rampOut);
+    const seedAt = (n, t) => {                                   // seed n after the flower grew by t seeds
+      const u = n + t, r = c * Math.sqrt(Math.max(0, u)), th = (n * gaDeg + res * t / F) * Math.PI / 180;
+      return { cx: cx + r * Math.cos(th), cy: cy + r * Math.sin(th), r: sizeU(u) };
+    };
+    const seedItem = (n, a) => {                                 // pop-in order for the build-up = distance from centre
+      const b = clamp01(n / N) * 0.88;
+      return { t: 'circle', k: 'pop', b, e: b + 0.12, a: { ...a, fill: LINE_PAINT } };
+    };
+    const zoom = {
+      type: 'flow',
+      layers(phi, zo) {
+        const t = zo.dir * zo.m * F * phi, out = [];
+        for (let n = Math.floor(-t); n <= Math.ceil(N - t); n++) {
+          const q = seedAt(n, t);
+          if (q.r > 0.02) out.push(seedItem(n, q));
+        }
+        return [{ a: {}, items: out }];
+      },
+      // animated SVG: every seed element animates cx/cy/r over one loop; at the end element n sits
+      // exactly where element n + F*m started, so the restart is invisible
+      animLayers(L, zo) {
+        const T = zo.dir * zo.m * F, out = [], Q = 12 * zo.m;
+        const n0 = Math.floor(Math.min(0, -T)), n1 = Math.ceil(Math.max(N, N - T));
+        for (let n = n0; n <= n1; n++) {
+          const sm = { cx: [], cy: [], r: [] };
+          for (let i = 0; i <= Q; i++) {
+            const q = seedAt(n, T * i / Q);
+            sm.cx.push(q.cx); sm.cy.push(q.cy); sm.r.push(q.r);
+          }
+          if (sm.r.every(v => v <= 0.02)) continue;
+          const it = seedItem(n, { cx: sm.cx[0], cy: sm.cy[0], r: sm.r[0] });
+          it.kids = smilKids(L, sm);
+          out.push(it);
+        }
+        return [{ a: {}, items: out }];
+      }
+    };
+    return { layers: [{ a: {}, items }], pivot: [cx, cy], viewBox: () => [0, 0, 1000, 1000], waveScale: 0, zoom };
+  }
+};
+
+/* =========================================================================
+   GENERATOR 4 — VORONOI WING (rounded Voronoi cells)
+   Every seed owns the region closer to it than to any other seed (Voronoi cell). Cells are
+   inset by half the gap and their corners rounded, giving soft blobs. Seeds drift on closed
+   Lissajous paths (whole cycles per loop) -> the cells reshape continuously and loop seamlessly.
+   ========================================================================= */
+const VOR_W = 1000, VOR_H = 1000;
+const vorCache = { key: null, seeds: null };
+
+function vorSeeds(N, reg, seed) {
+  // best-candidate sampling: 'reg' 0..1 -> from plain random to evenly spread
+  // seeds cover the widest/tallest frame (3:1 either way) plus one cell of margin, so changing the
+  // format only reveals more of the same pattern
+  const rnd = mulberry32(seed), m = Math.sqrt(VOR_W * VOR_H / N);
+  const x0 = -VOR_W - m, y0 = -VOR_H - m, w = 3 * VOR_W + 2 * m, h = 3 * VOR_H + 2 * m;
+  const total = Math.round(N * (w * h) / (VOR_W * VOR_H)), K = 1 + Math.round(reg * 15), pts = [];
+  for (let i = 0; i < total; i++) {
+    let best = null, bestD = -1;
+    for (let k = 0; k < K; k++) {
+      const c = { x: x0 + rnd() * w, y: y0 + rnd() * h };
+      let d = Infinity;
+      for (const q of pts) { const dd = (q.x - c.x) ** 2 + (q.y - c.y) ** 2; if (dd < d) d = dd; }
+      if (d > bestD) { bestD = d; best = c; }
+    }
+    best.p1 = rnd() * TAU; best.p2 = rnd() * TAU;                  // motion phases
+    best.f1 = 1 + Math.floor(rnd() * 2); best.f2 = 1 + Math.floor(rnd() * 2);   // whole cycles per loop
+    best.dir = rnd() < 0.5 ? -1 : 1;
+    pts.push(best);
+  }
+  return { pts, m };
+}
+
+// convex polygon clipped by the half-plane  n·p <= c
+function clipHalf(poly, nx, ny, c) {
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const da = nx * a[0] + ny * a[1] - c, db = nx * b[0] + ny * b[1] - c;
+    if (da <= 0) out.push(a);
+    if ((da < 0) !== (db < 0) && da !== db) { const t = da / (da - db); out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); }
+  }
+  return out;
+}
+
+// inset Voronoi cells for the given seed positions
+function vorCells(P, gap, m, F) {
+  const X0 = F.x0 - 2 * m, Y0 = F.y0 - 2 * m, X1 = F.x1 + 2 * m, Y1 = F.y1 + 2 * m;
+  const box = [[X0, Y0], [X1, Y0], [X1, Y1], [X0, Y1]];
+  const R2 = (3.5 * m) ** 2, cells = [];
+  for (let i = 0; i < P.length; i++) {
+    const s = P[i];
+    let poly = box;
+    for (let j = 0; j < P.length && poly.length; j++) {
+      if (j === i) continue;
+      const q = P[j], dx = q.x - s.x, dy = q.y - s.y, d2 = dx * dx + dy * dy;
+      if (d2 > R2 || d2 === 0) continue;
+      const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+      // bisector, moved gap/2 towards s
+      poly = clipHalf(poly, nx, ny, nx * (s.x + q.x) / 2 + ny * (s.y + q.y) / 2 - gap / 2);
+    }
+    cells.push(poly);
+  }
+  return cells;
+}
+
+// rounded outline: corners cut at fraction t (0..0.5) of each edge, joined by quadratic curves
+function roundedPath(poly, t) {
+  const n = poly.length;
+  if (n < 3) return '';
+  if (t <= 0) return 'M' + poly.map(p => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('L') + 'Z';
+  const at = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+  let d = '';
+  for (let i = 0; i < n; i++) {
+    const P = poly[(i - 1 + n) % n], V = poly[i], N = poly[(i + 1) % n];
+    const A = at(V, P, t), B = at(V, N, t);
+    d += (i ? 'L' : 'M') + A[0].toFixed(1) + ' ' + A[1].toFixed(1) + 'Q' + V[0].toFixed(1) + ' ' + V[1].toFixed(1) + ' ' + B[0].toFixed(1) + ' ' + B[1].toFixed(1);
+  }
+  return d + 'Z';
+}
+// same outline sampled at M fixed angles around the seed (constant point count -> SMIL can morph it)
+function roundedPolar(poly, t, cx, cy, M) {
+  const n = poly.length;
+  if (n < 3) return null;
+  const pts = [], q = (a, b, c, u) => (1 - u) * (1 - u) * a + 2 * (1 - u) * u * b + u * u * c;
+  const at = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+  for (let i = 0; i < n; i++) {
+    const P = poly[(i - 1 + n) % n], V = poly[i], N = poly[(i + 1) % n], A = at(V, P, t), B = at(V, N, t);
+    for (let k = 0; k <= 6; k++) { const u = k / 6; pts.push([q(A[0], V[0], B[0], u), q(A[1], V[1], B[1], u)]); }
+  }
+  const pol = pts.map(p => [Math.atan2(p[1] - cy, p[0] - cx), Math.hypot(p[0] - cx, p[1] - cy)]).sort((a, b) => a[0] - b[0]);
+  const out = [];
+  for (let k = 0; k < M; k++) {
+    const th = -Math.PI + (k + 0.5) * TAU / M;
+    const j = pol.findIndex(p => p[0] >= th), last = pol.length - 1;
+    let a, b, a0, b0;
+    if (j > 0) { a = pol[j - 1]; b = pol[j]; a0 = a[0]; b0 = b[0]; }
+    else if (j === 0) { a = pol[last]; b = pol[0]; a0 = a[0] - TAU; b0 = b[0]; }
+    else { a = pol[last]; b = pol[0]; a0 = a[0]; b0 = b[0] + TAU; }
+    const r = b0 === a0 ? a[1] : a[1] + (b[1] - a[1]) * (th - a0) / (b0 - a0);
+    out.push(cx + r * Math.cos(th), cy + r * Math.sin(th));
+  }
+  return out;
+}
+
+const wing = {
+  id: 'wing', name: 'Voronoi Wing', file: 'Voronoi_Wing', accent: ['#e2e8f0', '#cbd5e0'],
+  desc: 'Diagramma di Voronoi: ogni cella è la zona più vicina al suo seme. I semi si muovono e le celle si deformano.',
+  sym: 0, anim: { rot: 0, wave: 0, breathe: 0 }, noBreathe: true,
+  defs: '',
+  params: [
+    { id: 'cells', label: 'Numero di celle', min: 8, max: 300, step: 1, value: 100 },
+    { id: 'gap', label: 'Spazio tra le celle', min: 0, max: 40, step: 0.5, value: 1, unit: ' px' },
+    { id: 'stroke', label: 'Spessore linee', min: 0.5, max: 8, step: 0.25, value: 1.5, unit: ' px' },
+    { id: 'round', label: 'Arrotondamento', min: 0, max: 100, step: 1, value: 0, unit: '%' },
+    { id: 'reg', label: 'Regolarità', min: 0, max: 100, step: 1, value: 0, unit: '%' },
+    { id: 'move', label: 'Ampiezza movimento', min: 0, max: 100, step: 1, value: 20, unit: '%',
+      note: 'Quanto si spostano i semi nel loop (attiva "Loop ambientale").' },
+    { id: 'seed', hidden: true, value: 1337 },
+    { id: 'regen', type: 'button', label: 'Rigenera semi casuali', run: v => { v.seed = Math.floor(Math.random() * 1e9); } },
+  ],
+  build(p, fr = { ar: 1 }) {
+    const key = p.cells + '_' + p.reg + '_' + p.seed;
+    if (vorCache.key !== key) { vorCache.key = key; vorCache.seeds = vorSeeds(p.cells, p.reg / 100, p.seed); }
+    // frame = the square widened/heightened to the format, around the centre (same as fitAspect)
+    const fw = VOR_W * Math.max(fr.ar, 1), fh = VOR_H * Math.max(1 / fr.ar, 1);
+    const F = { x0: VOR_W / 2 - fw / 2, y0: VOR_H / 2 - fh / 2, x1: VOR_W / 2 + fw / 2, y1: VOR_H / 2 + fh / 2 };
+    const { m } = vorCache.seeds;
+    const pts = vorCache.seeds.pts.filter(s => s.x > F.x0 - 1.5 * m && s.x < F.x1 + 1.5 * m && s.y > F.y0 - 1.5 * m && s.y < F.y1 + 1.5 * m);
+    const amp = p.move / 100 * 0.45 * m, rt = p.round / 100 * 0.5;
+    const pos = phi => pts.map(s => ({
+      x: s.x + amp * Math.sin(s.dir * s.f1 * TAU * phi + s.p1),
+      y: s.y + amp * Math.sin(s.dir * s.f2 * TAU * phi + s.p2)
+    }));
+    const order = pts.map(s => clamp01(Math.hypot(s.x - VOR_W / 2, s.y - VOR_H / 2) / (Math.hypot(fw, fh) / 2)) * 0.8);
+    // white outlines on a black background; build-up = each outline is traced, centre first
+    const line = { fill: 'none', stroke: LINE_PAINT, 'stroke-width': p.stroke, 'stroke-linejoin': 'round' };
+    return {
+      layers: [{ a: {}, items: [] }],
+      pivot: [VOR_W / 2, VOR_H / 2], viewBox: () => [0, 0, VOR_W, VOR_H], waveScale: 0,
+      // preview / PNG / still SVG: exact cell outlines
+      frameLayers(g, phi) {
+        const P = pos(phi), cells = vorCells(P, p.gap, m, F), items = [];
+        cells.forEach((poly, i) => {
+          const d = poly.length >= 3 && roundedPath(poly, rt);
+          if (d) items.push({ t: 'path', k: 'draw', b: order[i], e: order[i] + 0.2, a: { d, ...line } });
+        });
+        return [{ a: {}, items }];
+      },
+      // animated SVG: every cell is a polygon with a fixed number of points morphed by SMIL
+      animLayers(L, G) {
+        const M = 32, Q = L ? 16 : 0, frames = [];
+        for (let i = 0; i <= Q; i++) {
+          const P = pos(L ? i / Q : 0), cells = vorCells(P, p.gap, m, F);
+          frames.push(cells.map((poly, j) => roundedPolar(poly, rt, P[j].x, P[j].y, M)));
+        }
+        const items = [];
+        pts.forEach((s, j) => {
+          const shapes = frames.map(f => f[j]);
+          if (shapes.some(sh => !sh)) return;
+          const inFrame = sh => { for (let k = 0; k < sh.length; k += 2) if (sh[k] > F.x0 && sh[k] < F.x1 && sh[k + 1] > F.y0 && sh[k + 1] < F.y1) return true; return false; };
+          if (!shapes.some(inFrame)) return;                      // never visible: skip
+          const str = sh => sh.map(v => Math.round(v)).join(' ');
+          const kids = Q ? `<animate attributeName="points" dur="${L}s" repeatCount="indefinite" values="${shapes.map(str).join(';')}"/>` : '';
+          items.push({ t: 'polygon', k: 'draw', b: order[j], e: order[j] + 0.2, kids, a: { points: str(shapes[0]), ...line } });
+        });
+        return [{ a: {}, items }];
+      }
+    };
+  }
+};
+
+/* =========================================================================
+   GENERATOR 5 — CIRCLES GOLDEN SPIRAL
+   Circle j has radius R_j = r0*e^(b*j*dT) and its centre on the log spiral at angle j*dT, so every
+   circle passes through the spiral's eye. Perpetual zoom: circle i slides into circle i+m's place
+   (scale e^(b*dT) and turn dT per step) -> a seamless zoom into the eye. New circles are born
+   sub-pixel at the eye and grow until they leave the frame (radius < distance from the eye, so they do).
+   ========================================================================= */
+const spiral = {
+  id: 'spiral', name: 'Circles Golden Spiral', file: 'Circles_Golden_Spiral', accent: ['#3cb4c2', '#2f94a1'],
+  desc: 'Spirale logaritmica di cerchi che crescono del fattore Φ: zoom infinito verso il centro, i cerchi crescono fino a uscire dal riquadro.',
+  sym: 360, anim: { rot: 0, wave: 0, breathe: 0, loopOn: true, zoomOn: true, growOn: false, zoomSpeed: 9 },
+  zoomUnit: 'cerchi', zoomSpeedMax: 36, noGrow: true, alwaysZoom: true,
+  defs: `
+    <linearGradient id="spiralGradient" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f89d5f"/><stop offset="35%" stop-color="#d9687e"/><stop offset="65%" stop-color="#6e579d"/><stop offset="100%" stop-color="#3cb4c2"/>
+    </linearGradient>`,
+  params: [
+    { id: 'num', label: 'Zoom', min: 10, max: 50, step: 1, value: 28,
+      note: 'Inquadratura: valori più alti allontanano la vista (entrano più cerchi nel riquadro).' },
+    { id: 'maxC', label: 'Numero massimo di cerchi', min: 5, max: 200, step: 1, value: 200,
+      fmt: v => v >= 200 ? 'tutti' : String(v),
+      note: 'Contati dal centro verso l\'esterno: oltre questo numero i cerchi più grandi spariscono di colpo prima di uscire dal riquadro.' },
+    { id: 'angle', label: 'Passo angolare', min: 5, max: 45, step: 1, value: 20, unit: '°' },
+    { id: 'growth', label: 'Fattore di crescita (Φ)', min: 1.1, max: 2.2, step: 0.01, value: 1.618 },
+    { id: 'rot', label: 'Rotazione globale', min: 0, max: 360, step: 1, value: 0, unit: '°' },
+    { id: 'gapEye', label: 'Distanza dal centro', min: 3, max: 60, step: 1, value: 15, unit: '%',
+      note: 'Quanto ogni cerchio resta lontano dal centro della spirale. Serve perché i cerchi, crescendo, escano dal riquadro.' },
+  ],
+  build(p, fr = { ar: 1 }) {
+    const N = p.num, dT = p.angle * Math.PI / 180, b = Math.log(p.growth) / Math.PI, rot = p.rot * Math.PI / 180, r0 = 2;
+    const bd = b * dT, k = 1 - p.gapEye / 100;              // circle radius = k * distance of its centre from the eye
+    const circleAt = j => { const th = rot + j * dT, Rj = r0 * Math.exp(bd * j); return { cx: Rj * Math.cos(th), cy: Rj * Math.sin(th), r: k * Rj }; };
+    // square frame centred on the eye, sized so about N circles fit inside it
+    const H = r0 * Math.exp(bd * (N - 1)) * 1.15, u = 2 * H / 850;
+    const Hx = H * Math.max(fr.ar, 1), Hy = H * Math.max(1 / fr.ar, 1), hd = Math.hypot(Hx, Hy);   // frame half-sizes
+    const jMin = Math.max(-400, Math.floor(Math.log(0.2 * u / (k * r0)) / bd));
+    // a circle has left the frame once its ring no longer reaches the frame: (1-k)*R > half-diagonal
+    const jMax = Math.min(N + 400, Math.ceil(Math.log(hd / ((1 - k) * r0)) / bd) + 1);
+    const visible = c => {                                   // ring crosses the frame [-Hx,Hx]x[-Hy,Hy] ?
+      const nx = Math.max(-Hx, Math.min(Hx, c.cx)), ny = Math.max(-Hy, Math.min(Hy, c.cy));
+      if (Math.hypot(c.cx - nx, c.cy - ny) > c.r) return false;            // ring entirely outside
+      const fx = Math.abs(c.cx) + Hx, fy = Math.abs(c.cy) + Hy;
+      return Math.hypot(fx, fy) >= c.r;                                    // square not entirely inside ring
+    };
+    // max circles: counted outward from the first one big enough to see (~1 px); the ones beyond
+    // jEnd vanish instantly (only when the cap is reached before the frame edge)
+    const jStart = Math.log(1 * u / (k * r0)) / bd;
+    const jEnd = p.maxC >= 200 ? Infinity : jStart + p.maxC;
+    const opAt = j => j < jEnd ? 0.9 : 0;
+    const ringItem = a => ({ t: 'circle', b: 0, e: 0,
+      a: { opacity: 0.9, ...a, fill: 'none', stroke: LINE_PAINT, 'stroke-width': 1.8 * u } });
+    const zoom = {
+      type: 'flow',
+      layers(phi, zo) {
+        const out = [];
+        for (let i = jMin - zo.m; i <= jMax + zo.m; i++) {
+          const j = i + zo.dir * zo.m * phi;
+          if (j < jMin || j > jMax) continue;
+          const c = circleAt(j), op = opAt(j);
+          if (op > 0.002 && visible(c)) out.push(ringItem({ ...c, opacity: op }));
+        }
+        return [{ a: {}, items: out }];
+      },
+      animLayers(L, zo) {
+        const Q = 6 * zo.m, out = [];
+        for (let i = jMin - zo.m; i <= jMax + zo.m; i++) {
+          const smp = { cx: [], cy: [], r: [], opacity: [] };
+          let seen = false;
+          for (let q = 0; q <= Q; q++) {
+            const j = i + zo.dir * zo.m * q / Q, c = circleAt(j), op = opAt(j);
+            smp.cx.push(c.cx); smp.cy.push(c.cy); smp.r.push(c.r); smp.opacity.push(op);
+            if (j >= jMin && j <= jMax && op > 0.002 && visible(c)) seen = true;
+          }
+          if (!seen) continue;
+          const it = ringItem({ cx: smp.cx[0], cy: smp.cy[0], r: smp.r[0], opacity: smp.opacity[0] });
+          it.kids = smilKids(L, smp);
+          out.push(it);
+        }
+        return [{ a: {}, items: out }];
+      }
+    };
+    return {
+      zoom,
+      layers: zoom.layers(0, { m: 1, dir: 1 }), pivot: [0, 0], waveScale: 0,
+      viewBox: () => [-H, -H, 2 * H, 2 * H]
+    };
+  }
+};
+
+const GENERATORS = [kochCrystal, sunflower, wing, spiral];
+
+/* =========================================================================
+   RENDERING
+   ========================================================================= */
+function ambientTransform(model, phi, amb) {
+  const rot = (amb.rotBase || 0) + amb.rotDeg * phi, s = 1 + amb.breathe * waveM(phi, 0);
+  if (rot === 0 && s === 1) return '';
+  const [px, py] = model.pivot;
+  return `translate(${px} ${py}) rotate(${rot.toFixed(3)}) scale(${s.toFixed(4)}) translate(${-px} ${-py})`;
+}
+
+/*
+  INFINITE ZOOM — continuous, nothing fades.
+  'copies' (Koch Crystal): the shape is drawn as a self-similar chain of copies at
+     scale S^z (+ rotation A*z) around the pivot, z = i + dir*m*phi. At phi=1 every copy
+     sits exactly where its neighbour was -> seamless. New copies are born sub-pixel at
+     the centre, old ones leave the frame. Stroke width stays constant on screen.
+  'flow' (sunflower, spiral): every element slides along the pattern into the next
+     element's position (index n -> n+m) -> new elements emerge from the centre.
+*/
+function zoomOf(model, amb) { return amb.zoom && model.zoom ? amb.zoom : null; }
+
+function itemBB(it) {
+  if (it.bb !== undefined) return it.bb;
+  const a = it.a;
+  if (it.t === 'circle') return (it.bb = [a.cx, a.cy, a.r]);
+  let xs = [], ys = [];
+  if (it.t === 'line') { xs = [a.x1, a.x2]; ys = [a.y1, a.y2]; }
+  else {
+    const nums = (String(a.points || a.d || '').match(/-?\d*\.?\d+(?:e-?\d+)?/g) || []).map(Number);
+    for (let i = 0; i + 1 < nums.length; i += 2) { xs.push(nums[i]); ys.push(nums[i + 1]); }
+  }
+  if (!xs.length) return (it.bb = null);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let i = 0; i < xs.length; i++) { x0 = Math.min(x0, xs[i]); x1 = Math.max(x1, xs[i]); y0 = Math.min(y0, ys[i]); y1 = Math.max(y1, ys[i]); }
+  return (it.bb = [(x0 + x1) / 2, (y0 + y1) / 2, Math.hypot(x1 - x0, y1 - y0) / 2]);
+}
+
+function copyLevels(model) {
+  const zc = model.zoom, vb = model.viewBox(false), lS = Math.log(zc.S);
+  const u = Math.max(vb[2], vb[3]) / 850, hd = Math.hypot(vb[2], vb[3]) / 2;
+  return {
+    iMin: Math.floor(Math.log(Math.max(0.3 * u, zc.minR || 0) / zc.radius) / lS),   // copy too small to read
+    iMax: Math.ceil(Math.log(hd / zc.innerR) / lS) + 1,         // copy's inner detail beyond the frame
+    u, hd, vc: [vb[0] + vb[2] / 2, vb[1] + vb[3] / 2]
+  };
+}
+function xfStr([px, py], s, rot, css = false) {
+  return css
+    ? `translate(${px}px,${py}px) rotate(${rot.toFixed(3)}deg) scale(${s.toPrecision(6)}) translate(${-px}px,${-py}px)`
+    : `translate(${px} ${py}) rotate(${rot.toFixed(3)}) scale(${s.toPrecision(6)}) translate(${-px} ${-py})`;
+}
+
+// Items -> SVG string. k scales stroke widths (constant-thickness zoom); cull(bb) skips items.
+function renderItems(items, g, phi, amb, model, k = 1, cull = null) {
+  let out = '';
+  for (const it of items) {
+    if (cull && (it.noZoom || cull(itemBB(it)))) continue;
+    const local = it.e > it.b ? clamp01((g - it.b) / (it.e - it.b)) : (g >= it.b ? 1 : 0);
+    if (local <= 0) continue;
+    const a = it.dyn ? { ...it.a, ...it.dyn(g) } : { ...it.a };
+    let op = 1;
+    if (local < 1 && it.k) {
+      if (it.k === 'draw') {
+        if (it.t === 'line') { a.x2 = a.x1 + (a.x2 - a.x1) * local; a.y2 = a.y1 + (a.y2 - a.y1) * local; }
+        else { a.pathLength = 1; a['stroke-dasharray'] = '1 2'; a['stroke-dashoffset'] = (1 - local) * 1.01; }
+      } else if (it.k === 'pop' && it.t === 'circle') {
+        a.r = a.r * Math.max(0, easeOutBack(local));
+      } else op *= local;
+    }
+    if (amb.wave > 0 && it.w != null) {
+      const m = waveM(phi, it.w);
+      op *= 1 - amb.wave * 0.6 * m;
+      if (it.t === 'circle' && model.waveScale) a.r *= 1 + amb.wave * model.waveScale * m;
+    }
+    if (op < 1) a.opacity = (a.opacity ?? 1) * op;
+    if (k !== 1 && a['stroke-width'] != null) a['stroke-width'] *= k;
+    out += `<${it.t}${attrs(a)}/>`;
+  }
+  return out;
+}
+function renderLayers(layers, g, phi, amb, model, k, cull) {
+  let out = '';
+  for (const L of layers) out += `<g${attrs(L.a)}>${renderItems(L.items, g, phi, amb, model, k, cull)}</g>`;
+  return out;
+}
+
+// One frame at growth progress g (0..1) and ambient phase phi (0..1)
+function renderFrame(model, g, phi, amb) {
+  const zo = zoomOf(model, amb);
+  let out = '';
+  if (model.frameLayers) {
+    out = renderLayers(model.frameLayers(g, phi, amb), g, phi, amb, model);
+  } else if (zo && model.zoom.type === 'flow') {
+    out = renderLayers(model.zoom.layers(phi, zo), g, phi, amb, model);
+  } else if (zo) {
+    const Lv = copyLevels(model), [px, py] = model.pivot, zc = model.zoom;
+    for (let i = Lv.iMin - zo.m; i <= Lv.iMax + zo.m; i++) {
+      const z = i + zo.dir * zo.m * phi;
+      if (z < Lv.iMin || z > Lv.iMax) continue;
+      const s = Math.pow(zc.S, z), rot = zc.A * z, cr = Math.cos(rot * Math.PI / 180), sr = Math.sin(rot * Math.PI / 180);
+      const cull = bb => {
+        if (!bb) return false;
+        const r = bb[2] * s;
+        if (r < 0.25 * Lv.u) return true;
+        const dx = (bb[0] - px) * s, dy = (bb[1] - py) * s;
+        return Math.hypot(px + dx * cr - dy * sr - Lv.vc[0], py + dx * sr + dy * cr - Lv.vc[1]) > Lv.hd + r;
+      };
+      out += `<g transform="${xfStr(model.pivot, s, rot)}">${renderLayers(model.layers, g, phi, amb, model, 1 / s, cull)}</g>`;
+    }
+  } else {
+    out = renderLayers(model.layers, g, phi, amb, model);
+  }
+  const tr = ambientTransform(model, phi, amb);
+  return tr ? `<g transform="${tr}">${out}</g>` : `<g>${out}</g>`;
+}
+
+// Self-contained animated SVG: CSS for growth + ambient, SMIL for morphs and zoom flow
+function renderAnimated(model, a, gen) {
+  const { G, L } = timing(a), amb = ambientOf(a, gen), zo = L ? zoomOf(model, amb) : null;
+  let css = '';
+  if (G) {
+    css += `.gd{animation:gd var(--d) linear var(--t) both}@keyframes gd{from{stroke-dashoffset:1.01}to{stroke-dashoffset:0}}`;
+    css += `.gp{transform-box:fill-box;transform-origin:center;animation:gp var(--d) cubic-bezier(.34,1.56,.64,1) var(--t) both}@keyframes gp{from{transform:scale(0)}to{transform:scale(1)}}`;
+    css += `.gf{animation:gf var(--d) linear var(--t) both}@keyframes gf{from{opacity:0}to{opacity:1}}`;
+  }
+  if (L && amb.wave > 0) {
+    let kO = '', kS = '';
+    for (let s = 0; s <= 20; s++) {
+      const m = waveM(s / 20, 0);
+      kO += `${s * 5}%{opacity:calc(var(--o) * ${(1 - amb.wave * 0.6 * m).toFixed(4)})}`;
+      kS += `${s * 5}%{transform:scale(${(1 + amb.wave * model.waveScale * m).toFixed(4)})}`;
+    }
+    const delay = `calc((var(--w) - 1) * ${L}s)`;
+    css += `@keyframes aw{${kO}}@keyframes as{${kS}}`;
+    css += `.aw{animation:aw ${L}s linear ${delay} infinite}`;
+    css += `.aws{transform-box:fill-box;transform-origin:center;animation:aw ${L}s linear ${delay} infinite,as ${L}s linear ${delay} infinite}`;
+  }
+  const hasAmbT = L && (amb.rotDeg !== 0 || amb.breathe > 0);
+  if (hasAmbT) {
+    const [px, py] = model.pivot;
+    let k = '';
+    for (let s = 0; s <= 24; s++) {
+      const phi = s / 24, rot = amb.rotDeg * phi, sc = 1 + amb.breathe * waveM(phi, 0);
+      k += `${(s / 24 * 100).toFixed(3)}%{transform:translate(${px}px,${py}px) rotate(${rot.toFixed(3)}deg) scale(${sc.toFixed(4)}) translate(${-px}px,${-py}px)}`;
+    }
+    css += `@keyframes amb{${k}}.amb{animation:amb ${L}s linear infinite}`;
+  }
+
+  const copies = zo && model.zoom.type === 'copies';
+  const vb = model.viewBox(isRotating(a, gen));
+  const vmScale = copies ? 100 / Math.min(vb[2], vb[3]) : 0;   // non-scaling strokes sized in vmin -> right at any display size
+  const layers = model.animLayers ? model.animLayers(L, G)
+    : zo && model.zoom.type === 'flow' ? model.zoom.animLayers(L, zo) : model.layers;
+  if (zo && model.zoom.animCss) css += model.zoom.animCss(L, zo);
+
+  let out = '';
+  for (const layer of layers) {
+    out += `<g${attrs(layer.a)}>`;
+    for (const it of layer.items) {
+      if (copies && it.noZoom) continue;
+      const grow = G && it.k && it.e > it.b;
+      const wave = L && amb.wave > 0 && it.w != null;
+      const useSmil = G && it.smil;
+      const at = it.dyn ? { ...it.a, ...it.dyn(useSmil ? 0 : 1) } : { ...it.a };
+      let style = '';
+      if (vmScale && at['stroke-width'] != null) {
+        style += `stroke-width:${(at['stroke-width'] * vmScale).toFixed(4)}vmin;`;
+        delete at['stroke-width']; at['vector-effect'] = 'non-scaling-stroke';
+      }
+      if (wave) {
+        const o = at.opacity ?? 1; delete at.opacity;
+        at.class = (it.t === 'circle' && model.waveScale) ? 'aws' : 'aw';
+        style += `--o:${o};--w:${it.w.toFixed(4)}`;
+      }
+      if (style) at.style = style;
+      if (grow && it.k === 'draw') { at.pathLength = 1; at['stroke-dasharray'] = '1 2'; }
+      let el = `<${it.t}${attrs(at)}>${useSmil ? it.smil(G) : ''}${it.kids || ''}</${it.t}>`;
+      if (grow) el = `<g class="g${it.k[0]}" style="--t:${(it.b * G).toFixed(3)}s;--d:${((it.e - it.b) * G).toFixed(3)}s">${el}</g>`;
+      out += el;
+    }
+    out += '</g>';
+  }
+
+  if (copies) {
+    const Lv = copyLevels(model), zc = model.zoom, Q = 16 * zo.m;
+    const lo = zo.dir > 0 ? Lv.iMin - zo.m : Lv.iMin, hi = zo.dir > 0 ? Lv.iMax : Lv.iMax + zo.m;
+    let uses = `<defs><g id="zsrc">${out}</g></defs>`;
+    for (let i = lo, j = 0; i <= hi; i++, j++) {
+      let k = '';
+      for (let q = 0; q <= Q; q++) {
+        const z = i + zo.dir * zo.m * q / Q;
+        k += `${(q / Q * 100).toFixed(3)}%{transform:${xfStr(model.pivot, Math.pow(zc.S, z), zc.A * z, true)}}`;
+      }
+      css += `@keyframes z${j}{${k}}.z${j}{animation:z${j} ${L}s linear infinite}`;
+      uses += `<use href="#zsrc" class="z${j}"/>`;
+    }
+    out = uses;
+  }
+  return { css, body: hasAmbT ? `<g class="amb">${out}</g>` : `<g>${out}</g>` };
+}
+
+// SMIL <animate> children for a flow element, sampled over one loop
+function smilKids(L, samples) {
+  let s = '';
+  for (const k in samples) {
+    const v = samples[k];
+    if (v.every(x => x === v[0])) continue;
+    s += `<animate attributeName="${k}" dur="${L}s" repeatCount="indefinite" values="${v.map(x => +x.toFixed(2)).join(';')}"/>`;
+  }
+  return s;
+}
+
+function svgDocument(gen, vb, body, css = '') {
+  const s = SVG_LONG_SIDE / Math.max(vb[2], vb[3]);
+  const r = n => Math.round(n * 1000) / 1000;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.map(r).join(' ')}" width="${Math.round(vb[2] * s)}" height="${Math.round(vb[3] * s)}">`
+    + `<defs>${gen.defs}${styleDefs(vb)}</defs>${css ? `<style>${css}</style>` : ''}${bgRect(vb)}${glowWrap(body)}</svg>`;
+}
+
+/* =========================================================================
+   STATE & TIMING
+   ========================================================================= */
+const ANIM_DEFAULTS = { growOn: false, growDur: 4, loopOn: false, loopDur: 6,
+  zoomOn: false, zoomSpeed: 1, zoomOut: false };
+const state = { format: 'window', modelAr: null, gen: GENERATORS[0], values: {}, anims: {}, model: null, modelDirty: true, tau: 0, loops: 0, playing: true, last: null, dirty: true, busy: false };
+for (const g of GENERATORS) {
+  state.values[g.id] = Object.fromEntries(g.params.filter(p => 'value' in p).map(p => [p.id, p.value]));
+  state.anims[g.id] = { ...ANIM_DEFAULTS, ...g.anim };
+}
+const P = () => state.values[state.gen.id];
+const A = () => state.anims[state.gen.id];
+
+function timing(a) {
+  const G = a.growOn ? a.growDur : 0, L = a.loopOn ? a.loopDur : 0;
+  return { G, L, T: G + L };
+}
+function ambientOf(a, gen) {
+  if (!a.loopOn) return { wave: 0, rotDeg: 0, breathe: 0, zoom: null };
+  return {
+    wave: 0, rotDeg: gen.sym ? a.rot : 0, breathe: a.breathe / 100,
+    zoom: a.zoomOn && gen.zoomUnit ? { m: a.zoomSpeed, dir: a.zoomOut ? -1 : 1 } : null
+  };
+}
+function frameAt(tau, a) {
+  const { G, L, T } = timing(a);
+  const t = Math.min(tau, T);
+  return { g: G ? clamp01(t / G) : 1, phi: L ? ((t % L) + L) % L / L : 0 };
+}
+// preview length: holds the finished shape 1s when there's no loop
+function previewLength(a) { const { G, L, T } = timing(a); return T + (G && !L ? 1 : 0); }
+/*
+  FRAME FORMAT: every generator describes its figure in a square viewBox. The chosen format
+  ('window' = shape of the stage, or a fixed ratio) widens or heightens that square around its
+  centre, keeping the figure's size. Generators that can continue their pattern (Voronoi, spiral)
+  read fr.ar in build() and fill the extra space; the others just get more background.
+*/
+const FORMATS = { window: null, '1:1': 1, '16:9': 16 / 9, '9:16': 9 / 16, '4:5': 4 / 5 };
+function frameAspect() {
+  const fixed = FORMATS[state.format];
+  if (fixed) return fixed;
+  const r = stageSvg.getBoundingClientRect();
+  const ar = r.width > 0 && r.height > 0 ? r.width / r.height : 1;
+  return Math.min(3, Math.max(1 / 3, Math.round(ar * 1000) / 1000));
+}
+function fitAspect(vb, ar) {
+  const [x, y, w, h] = vb, cx = x + w / 2, cy = y + h / 2;
+  const W = w / h < ar ? h * ar : w, H = w / h < ar ? h : w / ar;
+  return [cx - W / 2, cy - H / 2, W, H];
+}
+function getModel() {
+  const ar = frameAspect();
+  if (state.modelDirty || !state.model || state.modelAr !== ar) {
+    const m = state.gen.build(P(), { ar }), base = m.viewBox;
+    m.viewBox = rot => fitAspect(base(rot), ar);
+    state.model = m; state.modelAr = ar; state.modelDirty = false;
+  }
+  return state.model;
+}
+function isRotating(a, gen) { return a.loopOn && gen.sym && a.rot !== 0; }
+
+/* =========================================================================
+   UI
+   ========================================================================= */
+const $ = id => document.getElementById(id);
+const stageSvg = $('stage-svg'), stageDefs = $('stage-defs'), stageRoot = $('stage-root'), stageClip = $('stage-clip-rect'), stageOutline = $('stage-outline'), stageBg = $('stage-bg'), stageGlow = $('stage-glow'), glowRoot = $('glow-root');
+
+function fmt(d, v) { return d.fmt ? d.fmt(v) : (Math.round(v * 1000) / 1000) + (d.unit || ''); }
+
+// defs may contain { type: 'section', title? } entries: the controls after it (until the next
+// section) go into a boxed card. A control with dependsOn: '<checkbox id>' is greyed out while
+// that checkbox is off.
+function buildControls(container, defs, values, onChange) {
+  container.innerHTML = '';
+  let target = container;
+  for (const d of defs) {
+    if (d.type === 'section') {
+      target = document.createElement('div');
+      target.className = 'ctrl-section';
+      if (d.title) target.innerHTML = `<div class="ctrl-section-title">${d.title}</div>`;
+      container.appendChild(target);
+      continue;
+    }
+    if (d.hidden || (d.when && !d.when(values))) continue;
+    let el;
+    if (d.type === 'checkbox') {
+      el = document.createElement('label');
+      el.className = 'checkbox-group';
+      el.innerHTML = `<input type="checkbox" ${values[d.id] ? 'checked' : ''}> ${d.label}`;
+      el.querySelector('input').addEventListener('change', e => { values[d.id] = e.target.checked; onChange(d); });
+    } else if (d.type === 'choice') {
+      el = document.createElement('div');
+      el.className = 'control-group';
+      el.innerHTML = `<label><span>${d.label}</span></label><div class="seg">${d.options.map(([v, t]) =>
+        `<button type="button" data-v="${v}" class="${values[d.id] === v ? 'on' : ''}">${t}</button>`).join('')}</div>`;
+      el.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
+        if (values[d.id] === b.dataset.v) return;
+        values[d.id] = b.dataset.v; onChange(d);
+      }));
+    } else if (d.type === 'color') {
+      el = document.createElement('div');
+      el.className = 'control-group';
+      el.innerHTML = `<label><span>${d.label}</span><span class="v">${values[d.id]}</span></label>
+        <input type="color" value="${values[d.id]}" style="width:100%;height:32px;padding:0;border:none;background:none;cursor:pointer">${d.note ? `<small>${d.note}</small>` : ''}`;
+      const v = el.querySelector('.v');
+      el.querySelector('input').addEventListener('input', e => { values[d.id] = e.target.value; v.textContent = e.target.value; onChange(d); });
+    } else if (d.type === 'button') {
+      el = document.createElement('button');
+      el.className = 'btn secondary'; el.textContent = d.label;
+      el.addEventListener('click', () => { d.run(values); onChange(d); });
+    } else {
+      el = document.createElement('div');
+      el.className = 'control-group';
+      el.innerHTML = `<label><span>${d.label}</span><span class="v">${fmt(d, values[d.id])}</span></label>
+        <input type="range" min="${d.min}" max="${d.max}" step="${d.step}" value="${values[d.id]}">${d.note ? `<small>${d.note}</small>` : ''}`;
+      const v = el.querySelector('.v');
+      el.querySelector('input').addEventListener('input', e => { values[d.id] = parseFloat(e.target.value); v.textContent = fmt(d, values[d.id]); onChange(d); });
+    }
+    if (d.dependsOn && !values[d.dependsOn]) {
+      el.classList.add('is-disabled');
+      el.querySelectorAll('input').forEach(i => { i.disabled = true; });
+      if (el.tagName === 'BUTTON') el.disabled = true;
+    }
+    target.appendChild(el);
+  }
+}
+
+function animDefs(gen) {
+  return [
+    { id: 'growOn', type: 'checkbox', label: 'Crescita (build-up)', when: () => !gen.noGrow },
+    { id: 'growDur', label: 'Durata crescita', min: 1, max: 15, step: 0.5, unit: 's', when: v => v.growOn },
+    { id: 'loopOn', type: 'checkbox', label: 'Loop ambientale', when: () => !gen.alwaysZoom },
+    { id: 'loopDur', label: 'Durata loop', min: 2, max: 20, step: 0.5, unit: 's', when: v => v.loopOn },
+    { id: 'rot', label: 'Rotazione per loop', min: -360, max: 360, step: 1, when: v => v.loopOn && gen.sym,
+      fmt: v => v === 0 ? 'ferma' : `${v}°`,
+      note: `Nell'anteprima ruota senza scatti a qualsiasi valore. Negli export il loop si chiude perfettamente solo a 0° o multipli di ${gen.sym}°.` },
+    { id: 'breathe', label: 'Respiro', min: 0, max: 5, step: 0.25, unit: '%', when: v => v.loopOn && !gen.noBreathe },
+    { id: 'zoomOn', type: 'checkbox', label: 'Zoom infinito', when: v => v.loopOn && gen.zoomUnit && !gen.alwaysZoom },
+    { id: 'zoomSpeed', label: 'Velocità zoom', min: 1, max: gen.zoomSpeedMax || 4, step: 1, fmt: v => `${v} ${gen.zoomUnit} / loop`, when: v => v.loopOn && v.zoomOn && gen.zoomUnit },
+    { id: 'zoomOut', type: 'checkbox', label: 'Direzione: zoom out', when: v => v.loopOn && v.zoomOn && gen.zoomUnit },
+  ];
+}
+
+function renderPanels() {
+  const gen = state.gen;
+  $('gen-desc').textContent = gen.desc;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.id === gen.id));
+  buildControls($('params'), gen.params, P(), d => {
+    state.modelDirty = true; state.dirty = true;
+    // show the change on the finished figure: skip past the build-up (and hold it if nothing loops)
+    const { G, L } = timing(A());
+    if (G && state.tau < G) state.tau = G;
+    if (G && !L) setPlaying(false);
+    if (d.type === 'button' || d.type === 'checkbox') renderPanels();
+  });
+  renderAnimPanel();
+  renderStylePanel();
+  stageDefs.innerHTML = gen.defs;
+}
+function renderStylePanel() {
+  const box = $('style');
+  buildControls(box, STYLE_DEFS, style, d => {
+    state.dirty = true;
+    if (d.type === 'choice' || d.type === 'checkbox') renderStylePanel();
+    updatePngNote();
+  });
+}
+function renderAnimPanel() {
+  buildControls($('anim'), animDefs(state.gen), A(), d => {
+    if (d.type === 'checkbox') renderAnimPanel();
+    state.dirty = true;
+  });
+  updatePngNote();
+}
+function updatePngNote() {
+  const { G, L, T } = timing(A());
+  const frames = T ? Math.round(T * PNG_PRESET.fps) + (G && !L ? 1 : 0) : 1;
+  $('png-note').textContent = `Preset: ${PNG_PRESET.longSide}px lato lungo · ${PNG_PRESET.fps} fps · sfondo ${style.bg === 'gradient' ? 'gradiente' : 'nero'} · ${frames} frame`
+    + (L && !G ? ' (loop perfetto)' : '');
+}
+
+$('tabs').innerHTML = GENERATORS.map(g => `<button class="tab" data-id="${g.id}">${g.name}</button>`).join('');
+$('tabs').addEventListener('click', e => {
+  const id = e.target.dataset && e.target.dataset.id;
+  if (!id || id === state.gen.id) return;
+  state.gen = GENERATORS.find(g => g.id === id);
+  state.modelDirty = true; state.tau = 0; state.dirty = true;
+  renderPanels();
+});
+
+/* ---------- transport ---------- */
+const playBtn = $('play'), scrub = $('scrub'), timeEl = $('time');
+function setPlaying(p) { state.playing = p; playBtn.textContent = p ? '❚❚' : '▶'; }
+playBtn.addEventListener('click', () => {
+  const PL = previewLength(A());
+  if (!state.playing && state.tau >= PL - 1e-3) state.tau = 0;
+  setPlaying(!state.playing);
+});
+scrub.addEventListener('input', () => { setPlaying(false); state.tau = scrub.value / 1000 * previewLength(A()); state.dirty = true; });
+function setFormat(f) {
+  state.format = f; $('format').value = f;
+  document.body.classList.toggle('fmt-window', f === 'window');
+  state.dirty = true;
+}
+$('format').addEventListener('change', e => setFormat(e.target.value));
+setFormat('window');
+window.addEventListener('resize', () => { state.dirty = true; });
+function setUiHidden(h) {
+  document.body.classList.toggle('ui-hidden', h);
+  $('ui-toggle').textContent = h ? 'Mostra UI' : 'Nascondi UI';
+}
+$('ui-toggle').addEventListener('click', () => setUiHidden(!document.body.classList.contains('ui-hidden')));
+document.addEventListener('keydown', e => {
+  if (e.code === 'KeyH' && !e.metaKey && !e.ctrlKey && !e.altKey && e.target.type !== 'text') setUiHidden(!document.body.classList.contains('ui-hidden'));
+  if (e.code === 'Space' && e.target.tagName !== 'INPUT') { e.preventDefault(); playBtn.click(); }
+  if (e.code === 'Space' && e.target.type === 'range') { e.preventDefault(); playBtn.click(); }
+});
+
+function draw() {
+  const gen = state.gen, a = A(), model = getModel();
+  const PL = previewLength(a);
+  if (state.tau > PL) state.tau = PL ? state.tau % PL : 0;
+  const { g, phi } = frameAt(state.tau, a);
+  const vb = model.viewBox(isRotating(a, gen));
+  stageSvg.setAttribute('viewBox', vb.join(' '));
+  // clip to the frame, so the preview shows exactly what gets exported; outline it for fixed formats
+  const sd = styleDefs(vb);
+  if (sd !== state.styleDefsStr) { $('style-defs').innerHTML = sd; state.styleDefsStr = sd; }   // only when it changes
+  document.body.classList.toggle('bg-gradient', style.bg === 'gradient');
+  stageBg.setAttribute('fill', bgPaint());
+  document.body.classList.toggle('glow-on', style.glow);
+  for (const r of [stageClip, stageOutline, stageBg]) {
+    r.setAttribute('x', vb[0]); r.setAttribute('y', vb[1]); r.setAttribute('width', vb[2]); r.setAttribute('height', vb[3]);
+  }
+  const amb = ambientOf(a, gen);
+  amb.rotBase = (state.loops * amb.rotDeg) % 360;      // preview only: keep turning across restarts
+  const frameSvg = renderFrame(model, g, phi, amb);
+  stageRoot.innerHTML = frameSvg;
+  if (style.glow) {
+    // same blur as the export filter, converted to the glow layer's (half-size) CSS pixels
+    const r = stageSvg.getBoundingClientRect(), px = Math.min(r.width / vb[2], r.height / vb[3]) / 2;
+    const k = style.glowAmt / 100, sigma = (1 + 5 * k) * Math.min(vb[2], vb[3]) / 1000 * px;
+    const f = `blur(${sigma.toFixed(2)}px) brightness(${(1 + 0.25 * k).toFixed(2)})`;
+    if (f !== state.glowCss) { stageGlow.style.filter = f; state.glowCss = f; }
+    const vbs = vb.join(' ');
+    if (stageGlow.getAttribute('viewBox') !== vbs) stageGlow.setAttribute('viewBox', vbs);
+    glowRoot.innerHTML = frameSvg;
+  }
+  document.body.classList.toggle('no-anim', PL === 0);
+  playBtn.disabled = PL === 0;
+  scrub.disabled = PL === 0;
+  scrub.value = PL ? Math.round(state.tau / PL * 1000) : 0;
+  timeEl.textContent = `${state.tau.toFixed(2)}s / ${PL.toFixed(2)}s`;
+  updatePngNote();
+}
+
+function tick(ts) {
+  if (state.playing && !state.busy) {
+    if (state.last != null) {
+      const PL = previewLength(A());
+      const next = state.tau + (ts - state.last) / 1000;
+      if (PL && next >= PL) state.loops += Math.floor(next / PL);
+      state.tau = PL ? next % PL : 0;
+      state.dirty = true;
+    }
+    state.last = ts;
+  } else state.last = null;
+  if (state.dirty) { draw(); state.dirty = false; }
+  requestAnimationFrame(tick);
+}
+
+/* =========================================================================
+   EXPORT
+   ========================================================================= */
+function download(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url; link.download = name;
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+const svgBlob = s => new Blob([s], { type: 'image/svg+xml;charset=utf-8' });
+
+$('exp-svg').addEventListener('click', () => {
+  const gen = state.gen, a = A(), model = getModel(), { g, phi } = frameAt(state.tau, a);
+  const vb = model.viewBox(isRotating(a, gen));
+  download(svgBlob(svgDocument(gen, vb, renderFrame(model, g, phi, ambientOf(a, gen)))), `${gen.file}.svg`);
+});
+
+$('exp-svg-anim').addEventListener('click', () => {
+  const gen = state.gen, a = A(), model = getModel();
+  const vb = model.viewBox(isRotating(a, gen));
+  const { css, body } = renderAnimated(model, a, gen);
+  download(svgBlob(svgDocument(gen, vb, body, css)), `${gen.file}_animato.svg`);
+});
+
+function loadImage(src) {
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+}
+
+$('exp-png').addEventListener('click', async () => {
+  if (state.busy) return;
+  if (typeof JSZip === 'undefined') { $('status').textContent = 'JSZip non caricato: serve una connessione internet.'; return; }
+  const gen = state.gen, a = A(), model = getModel(), amb = ambientOf(a, gen);
+  const { G, L, T } = timing(a);
+  const fps = PNG_PRESET.fps;
+  const frames = T ? Math.round(T * fps) + (G && !L ? 1 : 0) : 1;   // growth-only includes final frame; loops exclude it (seamless)
+  const vb = model.viewBox(isRotating(a, gen));
+  const sc = PNG_PRESET.longSide / Math.max(vb[2], vb[3]);
+  const W = Math.round(vb[2] * sc), H = Math.round(vb[3] * sc);
+  const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const zip = new JSZip(), folder = zip.folder(gen.file);
+  const buttons = ['exp-svg', 'exp-svg-anim', 'exp-png'].map($);
+
+  state.busy = true; buttons.forEach(b => b.disabled = true);
+  try {
+    for (let i = 0; i < frames; i++) {
+      const { g, phi } = frameAt(i / fps, a);
+      const doc = svgDocument(gen, vb, renderFrame(model, g, phi, amb))
+        .replace(/width="\d+" height="\d+"/, `width="${W}" height="${H}"`);
+      const img = await loadImage('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(doc));
+      ctx.clearRect(0, 0, W, H);   // background is part of the SVG
+      ctx.drawImage(img, 0, 0, W, H);
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+      folder.file(`${gen.file}_${String(i).padStart(5, '0')}.png`, blob);
+      $('status').textContent = `Rendering frame ${i + 1} / ${frames}…`;
+    }
+    $('status').textContent = 'Creazione ZIP…';
+    const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+    download(zipBlob, `${gen.file}_${W}x${H}_${fps}fps.zip`);
+    $('status').textContent = `Fatto: ${frames} frame ${W}×${H}.`;
+  } catch (err) {
+    console.error(err);
+    $('status').textContent = 'Errore durante l\'esportazione: ' + err.message;
+  } finally {
+    state.busy = false; buttons.forEach(b => b.disabled = false);
+  }
+});
+
+/* ---------- start ---------- */
+renderPanels();
+setPlaying(true);
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
