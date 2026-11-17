@@ -65,10 +65,19 @@
   .brand { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   .brand-row { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
   h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -.01em; color: #fff; white-space: nowrap; }
-  h1, #gen-desc, .export small { text-shadow: 0 0 6px rgba(0,0,0,.45); }
-  #gen-desc { margin: 0; max-width: 520px; font-size: 13px; line-height: 1.45; color: var(--muted); }
 
   .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  /* the figure's description appears under its tab on hover */
+  .tab { position: relative; }
+  .tab::after {
+    content: attr(data-desc); position: absolute; top: calc(100% + 10px); left: 0; z-index: 20;
+    width: 280px; padding: 10px 12px; border-radius: 12px; white-space: normal; text-align: left;
+    font-size: 12px; font-weight: 400; line-height: 1.45; color: rgba(255,255,255,.8);
+    background: rgba(20,20,20,.72); border: .5px solid rgba(255,255,255,.16);
+    backdrop-filter: blur(36px); -webkit-backdrop-filter: blur(36px);
+    opacity: 0; transform: translateY(-4px); pointer-events: none; transition: opacity .15s ease, transform .15s ease;
+  }
+  .tab:hover::after { opacity: 1; transform: none; transition-delay: .25s; }
   .tab {
     padding: 7px 13px; border-radius: 999px; border: 1px solid transparent; background: transparent;
     color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
@@ -80,7 +89,12 @@
   .export { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
   .export-row { display: flex; gap: 8px; }
   .export small { text-align: right; max-width: 420px; }
-  .fmt { display: flex; align-items: center; gap: 8px; padding: 0 6px 0 14px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .fmt {
+    display: flex; align-items: center; gap: 8px; padding: 0 6px 0 14px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; color: var(--muted);
+    border: 1px dashed rgba(255,255,255,.35); background: transparent;   /* same dashed line as the format outline */
+  }
+  .fmt:hover { border-color: rgba(255,255,255,.6); }
   .fmt select {
     appearance: none; -webkit-appearance: none; background: transparent; border: none; color: #fff;
     font: inherit; font-size: 13px; padding: 8px 22px 8px 4px; cursor: pointer; outline: none;
@@ -90,7 +104,7 @@
   .fmt select option { background: #111; color: #fff; }
 
   .panel {
-    position: fixed; top: 50%; transform: translateY(-50%); z-index: 9; width: 296px;
+    position: fixed; top: 50%; transform: translateY(-50%); z-index: 9; width: 320px; border-radius: 20px;
     max-height: calc(100vh - 340px); overflow-y: auto; padding: 8px;   /* centred, so it always clears the header (>= 170px from the top) */
     display: flex; flex-direction: column; gap: 8px;
     scrollbar-width: thin; scrollbar-color: #333 transparent;
@@ -100,7 +114,7 @@
   .panel-right { right: var(--gap); }
   h3 { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
   #params, #anim { display: flex; flex-direction: column; gap: 8px; }
-  h3 { padding: 4px 6px 0; }
+  h3 { padding: 8px 6px 0; }
 
   .transport {
     position: fixed; left: 50%; bottom: var(--gap); transform: translateX(-50%); z-index: 10;
@@ -214,11 +228,10 @@
       <h1>Generative Nature Tool</h1>
       <nav class="tabs" id="tabs"></nav>
     </div>
-    <p id="gen-desc"></p>
   </div>
   <div class="export">
     <div class="export-row">
-      <label class="fmt glass" title="Formato del riquadro (anteprima ed export)">Formato
+      <label class="fmt" title="Formato del riquadro (anteprima ed export)">Format
         <select id="format">
           <option value="window">Finestra</option><option value="1:1">1:1</option><option value="16:9">16:9</option>
           <option value="9:16">9:16</option><option value="4:5">4:5</option>
@@ -456,7 +469,7 @@ const kochCrystal = {
    GENERATOR 3 — GIRASOLE (fillotassi aurea)
    ========================================================================= */
 const sunflower = {
-  id: 'sunflower', name: 'Girasole Aureo', file: 'Girasole_Aureo', accent: ['#f39c12', '#d35400'],
+  id: 'sunflower', name: 'Phyllotaxis', file: 'Phyllotaxis', accent: ['#f39c12', '#d35400'],
   desc: 'Disposizione naturale dei semi del girasole: spirale di Fermat con angolo aureo (137.5°).',
   sym: 360, anim: { rot: 0, wave: 60, breathe: 0 }, zoomUnit: 'passi',
   defs: `
@@ -464,9 +477,11 @@ const sunflower = {
       <stop offset="0%" stop-color="#fff5cc"/><stop offset="50%" stop-color="#f39c12"/><stop offset="100%" stop-color="#d35400"/>
     </radialGradient>`,
   params: [
+    { type: 'section', title: 'Semi' },
     { id: 'num', label: 'Numero di semi', min: 50, max: 3000, step: 10, value: 500, noAnim: true },
-    { id: 'spread', label: 'Compattezza', min: 5, max: 25, step: 0.5, value: 12 },
     { id: 'size', label: 'Grandezza semi', min: 1, max: 12, step: 0.5, value: 5.5 },
+    { type: 'section', title: 'Spirale' },
+    { id: 'spread', label: 'Compattezza', min: 5, max: 25, step: 0.5, value: 12 },
     { id: 'angle', label: 'Angolo', min: 137, max: 138, step: 0.001, value: 137.508, unit: '°',
       note: 'La fillotassi del girasole usa l\'angolo aureo ≈ 137.5° (360° / φ²): ogni seme ruota di questo angolo rispetto al precedente.' },
     { id: 'goldenAngle', type: 'button', label: 'Imposta angolo aureo (137.5°)', run: v => { v.angle = 137.508; } },
@@ -651,15 +666,19 @@ const wing = {
   sym: 0, anim: { rot: 0, wave: 0, breathe: 0 }, noBreathe: true,
   defs: '',
   params: [
+    { type: 'section', title: 'Celle' },
     { id: 'cells', label: 'Numero di celle', min: 8, max: 300, step: 1, value: 100, noAnim: true },
-    { id: 'gap', label: 'Spazio tra le celle', min: 0, max: 40, step: 0.5, value: 1, unit: ' px' },
-    { id: 'stroke', label: 'Spessore linee', min: 0.5, max: 8, step: 0.25, value: 1.5, unit: ' px' },
-    { id: 'round', label: 'Arrotondamento', min: 0, max: 100, step: 1, value: 0, unit: '%' },
     { id: 'reg', label: 'Regolarità', min: 0, max: 100, step: 1, value: 0, unit: '%', noAnim: true },
-    { id: 'move', label: 'Ampiezza movimento', min: 0, max: 100, step: 1, value: 20, unit: '%',
-      note: 'Quanto si spostano i semi nel loop (attiva "Loop ambientale").' },
     { id: 'seed', hidden: true, value: 1337 },
     { id: 'regen', type: 'button', label: 'Rigenera semi casuali', run: v => { v.seed = Math.floor(Math.random() * 1e9); } },
+    { type: 'section', title: 'Forma' },
+    { id: 'gap', label: 'Spazio tra le celle', min: 0, max: 40, step: 0.5, value: 1, unit: ' px' },
+    { id: 'round', label: 'Arrotondamento', min: 0, max: 100, step: 1, value: 0, unit: '%' },
+    { type: 'section', title: 'Movimento' },
+    { id: 'move', label: 'Ampiezza movimento', min: 0, max: 100, step: 1, value: 20, unit: '%',
+      note: 'Quanto si spostano i semi nel loop (attiva "Loop ambientale").' },
+    { type: 'section', title: 'Generale' },
+    { id: 'stroke', label: 'Spessore linee', min: 0.5, max: 8, step: 0.25, value: 1.5, unit: ' px' },
   ],
   build(p, fr = { ar: 1 }) {
     const key = p.cells + '_' + p.reg + '_' + p.seed;
@@ -729,11 +748,13 @@ const spiral = {
       <stop offset="0%" stop-color="#f89d5f"/><stop offset="35%" stop-color="#d9687e"/><stop offset="65%" stop-color="#6e579d"/><stop offset="100%" stop-color="#3cb4c2"/>
     </linearGradient>`,
   params: [
+    { type: 'section', title: 'Inquadratura' },
     { id: 'num', label: 'Zoom', min: 10, max: 50, step: 1, value: 28,
       note: 'Inquadratura: valori più alti allontanano la vista (entrano più cerchi nel riquadro).' },
     { id: 'maxC', label: 'Numero massimo di cerchi', min: 5, max: 200, step: 1, value: 200, noAnim: true,
       fmt: v => v >= 200 ? 'tutti' : String(v),
       note: 'Contati dal centro verso l\'esterno: oltre questo numero i cerchi più grandi spariscono di colpo prima di uscire dal riquadro.' },
+    { type: 'section', title: 'Spirale' },
     { id: 'angle', label: 'Passo angolare', min: 5, max: 45, step: 1, value: 20, unit: '°' },
     { id: 'growth', label: 'Fattore di crescita (Φ)', min: 1.1, max: 2.2, step: 0.01, value: 1.618 },
     { id: 'rot', label: 'Rotazione globale', min: 0, max: 360, step: 1, value: 0, unit: '°' },
@@ -1073,7 +1094,7 @@ function svgDocument(gen, vb, body, css = '') {
    ========================================================================= */
 const ANIM_DEFAULTS = { growOn: false, growDur: 4, loopOn: false, loopDur: 6,
   zoomOn: false, zoomSpeed: 1, zoomOut: false };
-const state = { format: 'window', modelAr: null, gen: GENERATORS[0], values: {}, anims: {}, model: null, modelDirty: true, tau: 0, loops: 0, playing: true, last: null, dirty: true, busy: false };
+const state = { format: 'window', modelAr: null, gen: GENERATORS[0], values: {}, anims: {}, model: null, modelDirty: true, tau: 0, loops: 0, playing: false, last: null, dirty: true, busy: false };
 for (const g of GENERATORS) {
   state.values[g.id] = Object.fromEntries(g.params.filter(p => 'value' in p).map(p => [p.id, p.value]));
   state.anims[g.id] = { ...ANIM_DEFAULTS, ...g.anim };
@@ -1257,18 +1278,23 @@ function buildControls(container, defs, values, onChange, anim = null, onAnim = 
     }
     target.appendChild(el);
   }
+  // a box whose controls are all hidden (e.g. zoom while the loop is off) is removed
+  container.querySelectorAll('.ctrl-section').forEach(b => { if (!b.querySelector('.control-group, .checkbox-group, button')) b.remove(); });
 }
 
 function animDefs(gen) {
   return [
+    { type: 'section' },
     { id: 'growOn', type: 'checkbox', label: 'Crescita (build-up)', when: () => !gen.noGrow },
     { id: 'growDur', label: 'Durata crescita', min: 1, max: 15, step: 0.5, unit: 's', when: v => v.growOn },
+    { type: 'section' },
     { id: 'loopOn', type: 'checkbox', label: 'Loop ambientale', when: () => !gen.alwaysZoom },
     { id: 'loopDur', label: 'Durata loop', min: 2, max: 20, step: 0.5, unit: 's', when: v => v.loopOn },
     { id: 'rot', label: 'Rotazione per loop', min: -360, max: 360, step: 1, when: v => v.loopOn && gen.sym,
       fmt: v => v === 0 ? 'ferma' : `${v}°`,
       note: `Nell'anteprima ruota senza scatti a qualsiasi valore. Negli export il loop si chiude perfettamente solo a 0° o multipli di ${gen.sym}°.` },
     { id: 'breathe', label: 'Respiro', min: 0, max: 5, step: 0.25, unit: '%', when: v => v.loopOn && !gen.noBreathe },
+    { type: 'section' },
     { id: 'zoomOn', type: 'checkbox', label: 'Zoom infinito', when: v => v.loopOn && gen.zoomUnit && !gen.alwaysZoom },
     { id: 'zoomSpeed', label: 'Velocità zoom', min: 1, max: gen.zoomSpeedMax || 4, step: 1, fmt: v => `${v} ${gen.zoomUnit} / loop`, when: v => v.loopOn && v.zoomOn && gen.zoomUnit },
     { id: 'zoomOut', type: 'checkbox', label: 'Direzione: zoom out', when: v => v.loopOn && v.zoomOn && gen.zoomUnit },
@@ -1277,7 +1303,6 @@ function animDefs(gen) {
 
 function renderPanels() {
   const gen = state.gen;
-  $('gen-desc').textContent = gen.desc;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.id === gen.id));
   buildControls($('params'), gen.params, P(), d => {
     state.modelDirty = true; state.dirty = true;
@@ -1289,7 +1314,7 @@ function renderPanels() {
     if (d.type === 'button' || d.type === 'checkbox') renderPanels();
   }, PA(), (d, what) => {
     // animating a slider needs the loop: switch it on and play
-    if (what === 'on' && !A().loopOn) { A().loopOn = true; setPlaying(true); }
+    if (what === 'on') { A().loopOn = true; setPlaying(true); }
     state.modelDirty = true; state.dirty = true;
     renderPanels();
   });
@@ -1307,6 +1332,7 @@ function renderStylePanel() {
 }
 function renderAnimPanel() {
   buildControls($('anim'), animDefs(state.gen), A(), d => {
+    if (d.type === 'checkbox' && A()[d.id] && ['growOn', 'loopOn', 'zoomOn'].includes(d.id)) setPlaying(true);
     if (d.type === 'checkbox') renderAnimPanel();
     state.dirty = true;
   });
@@ -1319,7 +1345,7 @@ function updatePngNote() {
     + (L && !G ? ' (loop perfetto)' : '');
 }
 
-$('tabs').innerHTML = GENERATORS.map(g => `<button class="tab" data-id="${g.id}">${g.name}</button>`).join('');
+$('tabs').innerHTML = GENERATORS.map(g => `<button class="tab" data-id="${g.id}" data-desc="${g.desc.replace(/"/g, '&quot;')}">${g.name}</button>`).join('');
 $('tabs').addEventListener('click', e => {
   const id = e.target.dataset && e.target.dataset.id;
   if (!id || id === state.gen.id) return;
@@ -1481,7 +1507,7 @@ $('exp-png').addEventListener('click', async () => {
 
 /* ---------- start ---------- */
 renderPanels();
-setPlaying(true);
+setPlaying(false);          // nothing animates at page load: press play (or turn an animation on)
 requestAnimationFrame(tick);
 </script>
 </body>
