@@ -125,6 +125,25 @@
   /* ---------- controls ---------- */
   .control-group { display: flex; flex-direction: column; gap: 7px; }
   label { font-size: 13px; font-weight: 500; display: flex; justify-content: space-between; color: #d4d4d4; }
+  .lbl-r { display: flex; align-items: center; gap: 6px; }
+  .ka {
+    width: 18px; height: 18px; padding: 0; border: none; border-radius: 4px; background: transparent; cursor: pointer;
+    color: var(--faint); font-size: 11px; line-height: 18px; text-align: center;
+  }
+  .ka:hover { color: #fff; background: rgba(255,255,255,.08); }
+  .ka.on { color: #fff; }
+  .dual { position: relative; height: 18px; }
+  .dual .track, .dual .fill { position: absolute; top: 50%; height: 4px; margin-top: -2px; border-radius: 2px; }
+  .dual .track { left: 8px; right: 8px; background: rgba(255,255,255,.2); }
+  .dual .fill { background: #fff; }
+  .dual input { position: absolute; inset: 0; width: 100%; height: 18px; margin: 0; -webkit-appearance: none; appearance: none; background: transparent; pointer-events: none; }
+  .dual input::-webkit-slider-runnable-track { background: transparent; height: 18px; }
+  .dual input::-moz-range-track { background: transparent; }
+  .dual input::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 16px; height: 16px; margin-top: 1px; border-radius: 50%; background: #fff; border: none; cursor: grab; }
+  .dual input::-moz-range-thumb { pointer-events: auto; width: 16px; height: 16px; border-radius: 50%; background: #fff; border: none; cursor: grab; }
+  .dual .r-to::-webkit-slider-thumb { background: #111; box-shadow: inset 0 0 0 2.5px #fff; }
+  .dual .r-to::-moz-range-thumb { background: #111; box-shadow: inset 0 0 0 2.5px #fff; }
+  .seg-sm button { padding: 4px 8px; font-size: 11px; }
   label .v { color: var(--muted); font-family: var(--mono); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
   input[type="range"] { width: 100%; accent-color: #fff; cursor: pointer; }
   .checkbox-group { display: flex; align-items: center; gap: 10px; justify-content: flex-start; cursor: pointer; }
@@ -346,12 +365,12 @@ const kochCrystal = {
   params: [
     { type: 'section' },
     { id: 'showKoch', type: 'checkbox', label: 'Mostra fiocco di Koch', value: true },
-    { id: 'depth', label: 'Iterazioni Koch', min: 0, max: 5, step: 1, value: 3, dependsOn: 'showKoch' },
+    { id: 'depth', label: 'Iterazioni Koch', min: 0, max: 5, step: 1, value: 3, noAnim: true, dependsOn: 'showKoch' },
     { type: 'section' },
     { id: 'showCrystal', type: 'checkbox', label: 'Mostra cristallo', value: true },
     { id: 'size', label: 'Dimensione cristallo', min: 30, max: 150, step: 1, value: 100, unit: '%', dependsOn: 'showCrystal',
       note: 'A 100% i rami principali toccano le punte del fiocco di Koch.' },
-    { id: 'branches', label: 'Numero di rami laterali', min: 2, max: 12, step: 1, value: 3, dependsOn: 'showCrystal' },
+    { id: 'branches', label: 'Numero di rami laterali', min: 2, max: 12, step: 1, value: 3, noAnim: true, dependsOn: 'showCrystal' },
     { id: 'len', label: 'Lunghezza rami laterali', min: 15, max: 80, step: 1, value: 45, unit: '%', dependsOn: 'showCrystal' },
     { id: 'taper', label: 'Accorciamento verso la punta', min: 10, max: 100, step: 1, value: 70, unit: '%', dependsOn: 'showCrystal' },
     { type: 'section', title: 'Generale' },
@@ -445,7 +464,7 @@ const sunflower = {
       <stop offset="0%" stop-color="#fff5cc"/><stop offset="50%" stop-color="#f39c12"/><stop offset="100%" stop-color="#d35400"/>
     </radialGradient>`,
   params: [
-    { id: 'num', label: 'Numero di semi', min: 50, max: 3000, step: 10, value: 500 },
+    { id: 'num', label: 'Numero di semi', min: 50, max: 3000, step: 10, value: 500, noAnim: true },
     { id: 'spread', label: 'Compattezza', min: 5, max: 25, step: 0.5, value: 12 },
     { id: 'size', label: 'Grandezza semi', min: 1, max: 12, step: 0.5, value: 5.5 },
     { id: 'angle', label: 'Angolo', min: 137, max: 138, step: 0.001, value: 137.508, unit: '°',
@@ -632,11 +651,11 @@ const wing = {
   sym: 0, anim: { rot: 0, wave: 0, breathe: 0 }, noBreathe: true,
   defs: '',
   params: [
-    { id: 'cells', label: 'Numero di celle', min: 8, max: 300, step: 1, value: 100 },
+    { id: 'cells', label: 'Numero di celle', min: 8, max: 300, step: 1, value: 100, noAnim: true },
     { id: 'gap', label: 'Spazio tra le celle', min: 0, max: 40, step: 0.5, value: 1, unit: ' px' },
     { id: 'stroke', label: 'Spessore linee', min: 0.5, max: 8, step: 0.25, value: 1.5, unit: ' px' },
     { id: 'round', label: 'Arrotondamento', min: 0, max: 100, step: 1, value: 0, unit: '%' },
-    { id: 'reg', label: 'Regolarità', min: 0, max: 100, step: 1, value: 0, unit: '%' },
+    { id: 'reg', label: 'Regolarità', min: 0, max: 100, step: 1, value: 0, unit: '%', noAnim: true },
     { id: 'move', label: 'Ampiezza movimento', min: 0, max: 100, step: 1, value: 20, unit: '%',
       note: 'Quanto si spostano i semi nel loop (attiva "Loop ambientale").' },
     { id: 'seed', hidden: true, value: 1337 },
@@ -712,7 +731,7 @@ const spiral = {
   params: [
     { id: 'num', label: 'Zoom', min: 10, max: 50, step: 1, value: 28,
       note: 'Inquadratura: valori più alti allontanano la vista (entrano più cerchi nel riquadro).' },
-    { id: 'maxC', label: 'Numero massimo di cerchi', min: 5, max: 200, step: 1, value: 200,
+    { id: 'maxC', label: 'Numero massimo di cerchi', min: 5, max: 200, step: 1, value: 200, noAnim: true,
       fmt: v => v >= 200 ? 'tutti' : String(v),
       note: 'Contati dal centro verso l\'esterno: oltre questo numero i cerchi più grandi spariscono di colpo prima di uscire dal riquadro.' },
     { id: 'angle', label: 'Passo angolare', min: 5, max: 45, step: 1, value: 20, unit: '°' },
@@ -985,6 +1004,52 @@ function renderAnimated(model, a, gen) {
   return { css, body: hasAmbT ? `<g class="amb">${out}</g>` : `<g>${out}</g>` };
 }
 
+/*
+  SAMPLED ANIMATED SVG: when sliders are animated the geometry itself changes, so the file stores
+  the whole figure at FPS frames per second and shows one at a time (SMIL visibility). Growth frames
+  play once; loop frames repeat forever. Frames whose framing differs (e.g. Zoom animated) are
+  mapped onto the first frame's viewBox.
+*/
+function renderSampled(a, gen, base) {
+  const { G, L } = timing(a), amb = ambientOf(a, gen), FPS = 15, rot = isRotating(a, gen);
+  const f3 = n => +n.toFixed(4);
+  // drawing coordinates only need ~1/4 px precision (timings and transforms keep theirs)
+  const dec = Math.max(0, Math.min(4, Math.ceil(-Math.log10(Math.max(base[2], base[3]) / 4000))));
+  const squeeze = svg => svg.replace(/ ([a-z][\w-]*)="([^"]*)"/g, (all, k, v) =>
+    k === 'transform' || k === 'stroke-width' || k === 'opacity' || k === 'stroke-dashoffset' ? all
+      : ` ${k}="${v.replace(/-?\d+\.\d+/g, m => String(+(+m).toFixed(dec)))}"`);
+  const frameOf = (g, phi) => {
+    const m = modelAt(phi), vb = m.viewBox(rot), s = base[2] / vb[2];
+    const same = Math.abs(s - 1) < 1e-9 && Math.abs(vb[0] - base[0]) < 1e-9 && Math.abs(vb[1] - base[1]) < 1e-9;
+    const tr = same ? '' : ` transform="translate(${f3(base[0])} ${f3(base[1])}) scale(${f3(s)}) translate(${f3(-vb[0])} ${f3(-vb[1])})"`;
+    return `<g${tr}>${squeeze(renderFrame(m, g, phi, amb))}</g>`;
+  };
+  let out = '';
+  if (G) {
+    const n = Math.max(2, Math.round(G * FPS)), dt = G / n;
+    for (let i = 0; i < n; i++) {
+      const last = i === n - 1 && !L;
+      out += `<g visibility="hidden"><set attributeName="visibility" to="visible" begin="${(i * dt).toFixed(3)}s"${last ? ' fill="freeze"' : ` dur="${dt.toFixed(3)}s"`}/>${frameOf((i + 1) / n, 0)}</g>`;
+    }
+  }
+  if (L) {
+    const Q = Math.min(180, Math.max(12, Math.round(L * FPS)));
+    for (let i = 0; i < Q; i++) {
+      const vals = i === 0 ? 'visible;hidden' : 'hidden;visible;hidden';
+      const kt = i === 0 ? `0;${(1 / Q).toFixed(5)}` : `0;${(i / Q).toFixed(5)};${((i + 1) / Q).toFixed(5)}`;
+      out += `<g visibility="hidden"><animate attributeName="visibility" begin="${G}s" dur="${L}s" repeatCount="indefinite" calcMode="discrete" values="${vals}" keyTimes="${kt}"/>${frameOf(1, i / Q)}</g>`;
+    }
+  }
+  // compact: numbers to ~1/4 px precision, and line styling that every element repeats moved onto
+  // one parent group (inherited). Skipped when some shapes are filled with the line paint (seeds).
+  let wrap = '';
+  if (!out.includes('fill="url(#lineFill)"')) {
+    out = out.split(' fill="none" stroke="url(#lineFill)"').join('').split(' stroke-linecap="round"').join('').split(' stroke-linejoin="round"').join('');
+    wrap = ' fill="none" stroke="url(#lineFill)" stroke-linecap="round" stroke-linejoin="round"';
+  }
+  return { css: '', body: `<g${wrap}>${out}</g>` };
+}
+
 // SMIL <animate> children for a flow element, sampled over one loop
 function smilKids(L, samples) {
   let s = '';
@@ -1015,6 +1080,30 @@ for (const g of GENERATORS) {
 }
 const P = () => state.values[state.gen.id];
 const A = () => state.anims[state.gen.id];
+
+/*
+  PARAMETER ANIMATION: a smooth slider can be given a range (from -> to). During the loop its value
+  goes from -> to -> from (eased or linear), with a small automatic phase offset per slider, so the
+  loop stays seamless. Whole-number sliders (noAnim) can't be animated.
+*/
+const pAnim = Object.fromEntries(GENERATORS.map(g => [g.id, {}]));
+const PA = () => pAnim[state.gen.id];
+const isAnimatable = d => !d.type && !d.noAnim && !d.hidden && d.min !== undefined;
+const hasParamAnim = () => Object.values(PA()).some(s => s.on);
+function phaseOffset(id) { let h = 7; for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0; return (h % 1000) / 1000 * 0.25; }
+function paramsAt(phi) {
+  const base = P(), an = PA();
+  let out = null;
+  for (const id in an) {
+    const st = an[id];
+    if (!st.on) continue;
+    out = out || { ...base };
+    const t = ((phi + phaseOffset(id)) % 1 + 1) % 1;
+    const w = st.curve === 'linear' ? (t < 0.5 ? 2 * t : 2 - 2 * t) : (1 - Math.cos(TAU * t)) / 2;
+    out[id] = st.from + (st.to - st.from) * w;
+  }
+  return out || base;
+}
 
 function timing(a) {
   const G = a.growOn ? a.growDur : 0, L = a.loopOn ? a.loopDur : 0;
@@ -1053,14 +1142,24 @@ function fitAspect(vb, ar) {
   const W = w / h < ar ? h * ar : w, H = w / h < ar ? h : w / ar;
   return [cx - W / 2, cy - H / 2, W, H];
 }
+function buildModel(params, ar) {
+  const m = state.gen.build(params, { ar }), base = m.viewBox;
+  m.viewBox = rot => fitAspect(base(rot), ar);
+  return m;
+}
 function getModel() {
   const ar = frameAspect();
   if (state.modelDirty || !state.model || state.modelAr !== ar) {
-    const m = state.gen.build(P(), { ar }), base = m.viewBox;
-    m.viewBox = rot => fitAspect(base(rot), ar);
-    state.model = m; state.modelAr = ar; state.modelDirty = false;
+    state.model = buildModel(P(), ar); state.modelAr = ar; state.modelDirty = false; state.animKey = null;
   }
   return state.model;
+}
+// model for loop phase phi: rebuilt with the animated slider values (cached for the same values)
+function modelAt(phi) {
+  if (!hasParamAnim()) return getModel();
+  const ar = frameAspect(), p = paramsAt(phi), key = ar + '|' + state.gen.id + '|' + JSON.stringify(p);
+  if (state.animKey !== key) { state.animModel = buildModel(p, ar); state.animKey = key; }
+  return state.animModel;
 }
 function isRotating(a, gen) { return a.loopOn && gen.sym && a.rot !== 0; }
 
@@ -1075,7 +1174,7 @@ function fmt(d, v) { return d.fmt ? d.fmt(v) : (Math.round(v * 1000) / 1000) + (
 // defs may contain { type: 'section', title? } entries: the controls after it (until the next
 // section) go into a boxed card. A control with dependsOn: '<checkbox id>' is greyed out while
 // that checkbox is off.
-function buildControls(container, defs, values, onChange) {
+function buildControls(container, defs, values, onChange, anim = null, onAnim = null) {
   container.innerHTML = '';
   let target = container;
   for (const d of defs) {
@@ -1113,17 +1212,47 @@ function buildControls(container, defs, values, onChange) {
       el = document.createElement('button');
       el.className = 'btn secondary'; el.textContent = d.label;
       el.addEventListener('click', () => { d.run(values); onChange(d); });
+    } else if (anim && isAnimatable(d) && anim[d.id] && anim[d.id].on) {
+      // animated slider: two handles (from = filled, to = ring), range readout and curve choice
+      const st = anim[d.id], rng = `min="${d.min}" max="${d.max}" step="${d.step}"`;
+      el = document.createElement('div');
+      el.className = 'control-group animated';
+      el.innerHTML = `<label><span>${d.label}</span><span class="lbl-r"><span class="v"></span><button type="button" class="ka on" title="Non animare">◆</button></span></label>
+        <div class="dual"><div class="track"></div><div class="fill"></div>
+          <input type="range" class="r-from" ${rng} value="${st.from}" title="Da"><input type="range" class="r-to" ${rng} value="${st.to}" title="A"></div>
+        <div class="seg seg-sm"><button type="button" data-c="smooth" class="${st.curve !== 'linear' ? 'on' : ''}">Morbido</button><button type="button" data-c="linear" class="${st.curve === 'linear' ? 'on' : ''}">Lineare</button></div>
+        ${d.note ? `<small>${d.note}</small>` : ''}`;
+      const v = el.querySelector('.v'), fill = el.querySelector('.fill');
+      const show = () => {
+        v.textContent = `${fmt(d, st.from)} → ${fmt(d, st.to)}`;
+        const pc = x => (x - d.min) / (d.max - d.min) * 100, lo = Math.min(pc(st.from), pc(st.to)), hi = Math.max(pc(st.from), pc(st.to));
+        fill.style.left = `calc(8px + (100% - 16px) * ${lo / 100})`; fill.style.width = `calc((100% - 16px) * ${(hi - lo) / 100})`;
+      };
+      show();
+      el.querySelector('.r-from').addEventListener('input', e => { st.from = parseFloat(e.target.value); values[d.id] = st.from; show(); onChange(d); });
+      el.querySelector('.r-to').addEventListener('input', e => { st.to = parseFloat(e.target.value); show(); onChange(d); });
+      el.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { st.curve = b.dataset.c; onAnim(d, 'curve'); }));
+      el.querySelector('.ka').addEventListener('click', () => { st.on = false; values[d.id] = st.from; onAnim(d, 'off'); });
     } else {
       el = document.createElement('div');
       el.className = 'control-group';
-      el.innerHTML = `<label><span>${d.label}</span><span class="v">${fmt(d, values[d.id])}</span></label>
+      const ka = anim && isAnimatable(d) ? `<button type="button" class="ka" title="Anima questo valore nel loop">◇</button>` : '';
+      el.innerHTML = `<label><span>${d.label}</span><span class="lbl-r"><span class="v">${fmt(d, values[d.id])}</span>${ka}</span></label>
         <input type="range" min="${d.min}" max="${d.max}" step="${d.step}" value="${values[d.id]}">${d.note ? `<small>${d.note}</small>` : ''}`;
       const v = el.querySelector('.v');
       el.querySelector('input').addEventListener('input', e => { values[d.id] = parseFloat(e.target.value); v.textContent = fmt(d, values[d.id]); onChange(d); });
+      if (ka) el.querySelector('.ka').addEventListener('click', () => {
+        const span = d.max - d.min, from = values[d.id];
+        let to = from + span * 0.25;
+        if (to > d.max) to = from - span * 0.25;
+        to = Math.round(Math.min(d.max, Math.max(d.min, to)) / d.step) * d.step;
+        anim[d.id] = { on: true, from, to: +to.toFixed(6), curve: (anim[d.id] && anim[d.id].curve) || 'smooth' };
+        onAnim(d, 'on');
+      });
     }
     if (d.dependsOn && !values[d.dependsOn]) {
       el.classList.add('is-disabled');
-      el.querySelectorAll('input').forEach(i => { i.disabled = true; });
+      el.querySelectorAll('input, button').forEach(i => { i.disabled = true; });
       if (el.tagName === 'BUTTON') el.disabled = true;
     }
     target.appendChild(el);
@@ -1156,7 +1285,13 @@ function renderPanels() {
     const { G, L } = timing(A());
     if (G && state.tau < G) state.tau = G;
     if (G && !L) setPlaying(false);
+    if (d.type === 'button') for (const id in PA()) if (PA()[id].on) PA()[id].from = P()[id];   // e.g. golden-angle button
     if (d.type === 'button' || d.type === 'checkbox') renderPanels();
+  }, PA(), (d, what) => {
+    // animating a slider needs the loop: switch it on and play
+    if (what === 'on' && !A().loopOn) { A().loopOn = true; setPlaying(true); }
+    state.modelDirty = true; state.dirty = true;
+    renderPanels();
   });
   renderAnimPanel();
   renderStylePanel();
@@ -1222,10 +1357,11 @@ document.addEventListener('keydown', e => {
 });
 
 function draw() {
-  const gen = state.gen, a = A(), model = getModel();
+  const gen = state.gen, a = A();
   const PL = previewLength(a);
   if (state.tau > PL) state.tau = PL ? state.tau % PL : 0;
   const { g, phi } = frameAt(state.tau, a);
+  const model = modelAt(phi);
   const vb = model.viewBox(isRotating(a, gen));
   stageSvg.setAttribute('viewBox', vb.join(' '));
   // clip to the frame, so the preview shows exactly what gets exported; outline it for fixed formats
@@ -1287,15 +1423,15 @@ function download(blob, name) {
 const svgBlob = s => new Blob([s], { type: 'image/svg+xml;charset=utf-8' });
 
 $('exp-svg').addEventListener('click', () => {
-  const gen = state.gen, a = A(), model = getModel(), { g, phi } = frameAt(state.tau, a);
+  const gen = state.gen, a = A(), { g, phi } = frameAt(state.tau, a), model = modelAt(phi);
   const vb = model.viewBox(isRotating(a, gen));
   download(svgBlob(svgDocument(gen, vb, renderFrame(model, g, phi, ambientOf(a, gen)))), `${gen.file}.svg`);
 });
 
 $('exp-svg-anim').addEventListener('click', () => {
-  const gen = state.gen, a = A(), model = getModel();
+  const gen = state.gen, a = A(), model = modelAt(0);
   const vb = model.viewBox(isRotating(a, gen));
-  const { css, body } = renderAnimated(model, a, gen);
+  const { css, body } = hasParamAnim() && timing(a).L ? renderSampled(a, gen, vb) : renderAnimated(model, a, gen);
   download(svgBlob(svgDocument(gen, vb, body, css)), `${gen.file}_animato.svg`);
 });
 
@@ -1306,7 +1442,7 @@ function loadImage(src) {
 $('exp-png').addEventListener('click', async () => {
   if (state.busy) return;
   if (typeof JSZip === 'undefined') { $('status').textContent = 'JSZip non caricato: serve una connessione internet.'; return; }
-  const gen = state.gen, a = A(), model = getModel(), amb = ambientOf(a, gen);
+  const gen = state.gen, a = A(), model = modelAt(0), amb = ambientOf(a, gen);
   const { G, L, T } = timing(a);
   const fps = PNG_PRESET.fps;
   const frames = T ? Math.round(T * fps) + (G && !L ? 1 : 0) : 1;   // growth-only includes final frame; loops exclude it (seamless)
@@ -1321,8 +1457,8 @@ $('exp-png').addEventListener('click', async () => {
   state.busy = true; buttons.forEach(b => b.disabled = true);
   try {
     for (let i = 0; i < frames; i++) {
-      const { g, phi } = frameAt(i / fps, a);
-      const doc = svgDocument(gen, vb, renderFrame(model, g, phi, amb))
+      const { g, phi } = frameAt(i / fps, a), m = modelAt(phi);
+      const doc = svgDocument(gen, m.viewBox(isRotating(a, gen)), renderFrame(m, g, phi, amb))
         .replace(/width="\d+" height="\d+"/, `width="${W}" height="${H}"`);
       const img = await loadImage('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(doc));
       ctx.clearRect(0, 0, W, H);   // background is part of the SVG
