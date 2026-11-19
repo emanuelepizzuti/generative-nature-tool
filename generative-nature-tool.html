@@ -176,6 +176,17 @@
   .ctrl-section { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border: 1px solid rgba(255,255,255,.10); border-radius: 12px; background: rgba(0,0,0,.18); }
   .ctrl-section-title { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: -4px; }
   .is-disabled { opacity: .3; }
+  .swatches { display: flex; gap: 8px; }
+  .swatches input[type="color"] {
+    -webkit-appearance: none; appearance: none; width: 30px; height: 30px; padding: 0; cursor: pointer;
+    border: .5px solid rgba(255,255,255,.3); border-radius: 50%; background: none;
+  }
+  .swatches input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+  .swatches input[type="color"]::-webkit-color-swatch { border: none; border-radius: 50%; }
+  .swatches input[type="color"]::-moz-color-swatch { border: none; border-radius: 50%; }
+  .grad-preview { height: 6px; border-radius: 3px; }
+  .link-btn { padding: 0; border: none; background: none; cursor: pointer; font-size: 11px; font-weight: 500; color: var(--faint); }
+  .link-btn:hover { color: #fff; }
   .seg { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: rgba(255,255,255,.06); border: .5px solid var(--line); }
   .seg button {
     flex: 1; padding: 6px 8px; border: none; border-radius: 999px; background: transparent; cursor: pointer;
@@ -234,7 +245,8 @@
     <defs><clipPath id="stage-clip"><rect id="stage-clip-rect"/></clipPath></defs>
     <defs id="stage-defs"></defs>
     <defs id="style-defs"></defs>
-    <g clip-path="url(#stage-clip)"><rect id="stage-bg"/><g id="stage-root"></g></g>
+    <mask id="stage-mask" maskUnits="userSpaceOnUse"><g id="mask-root"></g></mask>
+    <g clip-path="url(#stage-clip)"><rect id="stage-bg"/><g id="stage-root"></g><rect id="grad-rect" fill="url(#lineFill)" mask="url(#stage-mask)" display="none"/></g>
     <rect id="stage-outline" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1" vector-effect="non-scaling-stroke" stroke-dasharray="4 4"/>
   </svg>
   <!-- preview glow: a copy of the figure at half resolution, blurred by the GPU (CSS filter) and
@@ -361,18 +373,19 @@ function mulberry32(a) {
 const LINE_PAINT = 'url(#lineFill)';
 const BG_GRADIENT = ['#006064', '#0E3638'];                       // top -> bottom
 const LINE_GRADIENT = ['#E7FF85', '#FFA1A7', '#ABACFF', '#5AD7ED']; // 45 degrees, bottom-left -> top-right
-const style = { bg: 'black', line: 'white', lineColor: '#ffffff', glow: false, glowAmt: 40 };
+const style = { bg: 'black', line: 'white', lineColor: '#ffffff', gradColors: [...LINE_GRADIENT], glow: false, glowAmt: 40 };
 const STYLE_DEFS = [
   { id: 'bg', type: 'choice', label: 'Sfondo', options: [['black', 'Nero'], ['gradient', 'Gradiente']] },
   { id: 'line', type: 'choice', label: 'Colore linee', options: [['white', 'Bianco'], ['custom', 'Personalizzato'], ['gradient', 'Gradiente']] },
   { id: 'lineColor', type: 'color', label: 'Colore personalizzato', when: v => v.line === 'custom' },
+  { id: 'gradColors', type: 'swatches', label: 'Colori gradiente', defaults: LINE_GRADIENT, when: v => v.line === 'gradient' },
   { id: 'glow', type: 'checkbox', label: 'Bagliore' },
   { id: 'glowAmt', label: 'Intensità bagliore', min: 0, max: 100, step: 1, unit: '%', dependsOn: 'glow' },
 ];
 function styleDefs(vb) {
   const [x, y, w, h] = vb, L = (w + h) / 2;
   const stops = style.line === 'gradient'
-    ? LINE_GRADIENT.map((c, i) => `<stop offset="${(i / (LINE_GRADIENT.length - 1)).toFixed(3)}" stop-color="${c}"/>`).join('')
+    ? style.gradColors.map((c, i, all) => `<stop offset="${(i / (all.length - 1)).toFixed(3)}" stop-color="${c}"/>`).join('')
     : (c => `<stop offset="0" stop-color="${c}"/><stop offset="1" stop-color="${c}"/>`)(style.line === 'custom' ? style.lineColor : '#ffffff');
   const f = n => +n.toFixed(3);
   return `<linearGradient id="lineFill" gradientUnits="userSpaceOnUse" x1="${f(x)}" y1="${f(y + h)}" x2="${f(x + L)}" y2="${f(y + h - L)}">${stops}</linearGradient>`
@@ -392,6 +405,22 @@ function glowFilter(vb) {
     + `<feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
 }
 const glowWrap = body => style.glow ? `<g filter="url(#glowF)">${body}</g>` : body;
+/*
+  LINE PAINT (performance): every shape is generated with url(#lineFill). Hundreds of elements each
+  referencing a paint server is very slow to update in browsers (~400 ms per frame for ~1200 lines),
+  so before display/export the reference is resolved:
+   - solid colour (white / custom): written directly on every shape (fast);
+   - gradient: shapes drawn in white inside a mask, and ONE rectangle filled with the gradient shows
+     through them (a single reference). The gradient then stays fixed to the frame.
+*/
+const solidLine = () => style.line === 'custom' ? style.lineColor : '#ffffff';
+const resolveLines = (svg, colour) => svg.split(LINE_PAINT).join(colour);
+function paintedBody(body, vb, maskId) {
+  if (style.line !== 'gradient') return resolveLines(body, solidLine());
+  const [x, y, w, h] = vb;
+  return `<mask id="${maskId}" maskUnits="userSpaceOnUse" x="${x}" y="${y}" width="${w}" height="${h}">${resolveLines(body, '#ffffff')}</mask>`
+    + `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${LINE_PAINT}" mask="url(#${maskId})"/>`;
+}
 const bgPaint = () => style.bg === 'gradient' ? 'url(#bgFill)' : '#000000';
 const bgRect = vb => `<rect x="${vb[0]}" y="${vb[1]}" width="${vb[2]}" height="${vb[3]}" fill="${bgPaint()}"/>`;
 
@@ -517,7 +546,7 @@ const sunflower = {
       note: 'La fillotassi del girasole usa l\'angolo aureo ≈ 137.5° (360° / φ²): ogni seme ruota di questo angolo rispetto al precedente.' },
     { id: 'goldenAngle', type: 'button', label: 'Imposta angolo aureo (137.5°)', run: v => { v.angle = 137.508; } },
   ],
-  build(p) {
+  build(p, fr) {
     const N = p.num, c = p.spread, s = p.size, ga = p.angle * Math.PI / 180, cx = 500, cy = 500;
     const items = [];
     for (let i = 1; i <= N; i++) {
@@ -528,12 +557,14 @@ const sunflower = {
         a: { cx: cx + r * Math.cos(th), cy: cy + r * Math.sin(th), r: size, fill: LINE_PAINT } });
     }
     /*
-      ZOOM: the same Fermat/Vogel phyllotaxis as the still flower (r = c*sqrt(n), theta = n*angle),
-      with a continuous index u = n + t: every seed keeps its angle and slides straight outward while
-      new seeds are born at the centre (the flower keeps growing). Advancing t by F seeds turns the
-      pattern by F*angle, which for a Fibonacci-like F is a tiny residual 'res': a slow compensating
-      rotation res*t/F makes the frame at t=F identical to t=0 -> seamless loop, constant density.
-      Seeds grow in from nothing at the centre and shrink to nothing at the outer edge (u = N).
+      ZOOM: seeds keep their angle and slide outward along a radial profile R(u) of their continuous
+      index u = n + t; new seeds are born at the centre. Any fixed R(u) loops seamlessly: after F
+      seeds every seed sits where its neighbour started (F*angle ~ a full turn + a tiny residual
+      'res', compensated by a slow rotation).
+      R(u) = c*sqrt(u) * (1 + a*(u/N)^2): near the centre it is exactly the sunflower's Fermat spiral
+      (same density, seeds visibly appearing), further out it spreads faster and faster, so the seeds
+      accelerate and grow as they move out (the zoom feel). Seed size follows the local spacing and
+      shrinks to nothing towards the outer edge, as in the still flower.
     */
     const gaDeg = p.angle;
     let F = 1, res = 0, bestErr = Infinity;
@@ -541,41 +572,50 @@ const sunflower = {
       const e = ((f * gaDeg) % 360 + 540) % 360 - 180;
       if (Math.abs(e) < bestErr) { bestErr = Math.abs(e); F = f; res = e; }
     }
+    const a = Math.max(0.3, 460 / (c * Math.sqrt(N)) - 1);         // outer edge reaches ~460 px from the centre
+    const radiusU = u => c * Math.sqrt(u) * (1 + a * (u / N) ** 2);
+    const dRadiusU = u => c * ((1 + a * (u / N) ** 2) / (2 * Math.sqrt(u)) + Math.sqrt(u) * 2 * a * u / (N * N));
     // seeds grow in over the first `ramp` seeds and shrink away over the last `rampOut` seeds
-    const ramp = Math.min(0.001 * N + 5, N / 3);       // grow-in at the centre
-    const rampOut = Math.min(0.8 * N + 20, N / 2);    // shrink-out at the edge (more gradual)
+    const ramp = Math.min(0.001 * N + 5, N / 3);
+    const rampOut = Math.min(0.8 * N + 20, N / 2);
     const sizeU = u => u <= 0 || u >= N ? 0
-      : s * Math.max(0.6, Math.min(1.5, Math.sqrt(u) / 12)) * smooth(u / ramp) * smooth((N - u) / rampOut);
-    const seedAt = (n, t) => {                                   // seed n after the flower grew by t seeds
-      const u = n + t, r = c * Math.sqrt(Math.max(0, u)), th = (n * gaDeg + res * t / F) * Math.PI / 180;
-      return { cx: cx + r * Math.cos(th), cy: cy + r * Math.sin(th), r: sizeU(u) };
+      : s * Math.max(0.6, Math.min(1.5, Math.sqrt(u) / 12)) * smooth(u / ramp) * smooth((N - u) / rampOut)
+        * Math.sqrt(2 * radiusU(u) * dRadiusU(u)) / c;               // = 1 on the Fermat part, grows outward
+    const stepsFor = m => m;
+    const seedAt = (n, t) => {
+      const u = n + t, R = u > 0 ? radiusU(u) : 0, th = (n * gaDeg + res * t / F) * Math.PI / 180;
+      return { cx: cx + R * Math.cos(th), cy: cy + R * Math.sin(th), r: u > 0 ? sizeU(u) : 0, u };
     };
     const seedItem = (n, a) => {                                 // pop-in order for the build-up = distance from centre
       const b = clamp01(n / N) * 0.88;
-      return { t: 'circle', k: 'pop', b, e: b + 0.12, a: { ...a, fill: LINE_PAINT } };
+      return { t: 'circle', k: 'pop', b, e: b + 0.12, a: { cx: a.cx, cy: a.cy, r: a.r, fill: LINE_PAINT } };
     };
+    const uMin = 0, uMax = N;
+    const inRange = q => q.u > uMin && q.u < uMax && q.r > 0.02;
     const zoom = {
       type: 'flow',
       layers(phi, zo) {
-        const t = zo.dir * zo.m * F * phi, out = [];
-        for (let n = Math.floor(-t); n <= Math.ceil(N - t); n++) {
+        const t = zo.dir * stepsFor(zo.m) * F * phi, out = [];
+        for (let n = Math.floor(uMin - t); n <= Math.ceil(uMax - t); n++) {
           const q = seedAt(n, t);
-          if (q.r > 0.02) out.push(seedItem(n, q));
+          if (inRange(q)) out.push(seedItem(n, q));
         }
         return [{ a: {}, items: out }];
       },
-      // animated SVG: every seed element animates cx/cy/r over one loop; at the end element n sits
-      // exactly where element n + F*m started, so the restart is invisible
+      // animated SVG: every seed animates cx/cy/r over one loop (sampled densely enough for the
+      // exponential motion); at the end seed n sits exactly where seed n + steps*F started
       animLayers(L, zo) {
-        const T = zo.dir * zo.m * F, out = [], Q = 12 * zo.m;
-        const n0 = Math.floor(Math.min(0, -T)), n1 = Math.ceil(Math.max(N, N - T));
+        const T = zo.dir * stepsFor(zo.m) * F, out = [], Q = Math.min(48, 12 * Math.ceil(Math.abs(T) / F));
+        const n0 = Math.floor(uMin - Math.max(0, T)), n1 = Math.ceil(uMax - Math.min(0, T));
         for (let n = n0; n <= n1; n++) {
           const sm = { cx: [], cy: [], r: [] };
+          let seen = false;
           for (let i = 0; i <= Q; i++) {
             const q = seedAt(n, T * i / Q);
-            sm.cx.push(q.cx); sm.cy.push(q.cy); sm.r.push(q.r);
+            if (inRange(q)) seen = true;
+            sm.cx.push(q.cx); sm.cy.push(q.cy); sm.r.push(inRange(q) ? q.r : 0);
           }
-          if (sm.r.every(v => v <= 0.02)) continue;
+          if (!seen) continue;
           const it = seedItem(n, { cx: sm.cx[0], cy: sm.cy[0], r: sm.r[0] });
           it.kids = smilKids(L, sm);
           out.push(it);
@@ -791,6 +831,8 @@ const spiral = {
     { id: 'rot', label: 'Rotazione globale', min: 0, max: 360, step: 1, value: 0, unit: '°' },
     { id: 'gapEye', label: 'Distanza dal centro', min: 3, max: 60, step: 1, value: 15, unit: '%',
       note: 'Quanto ogni cerchio resta lontano dal centro della spirale. Serve perché i cerchi, crescendo, escano dal riquadro.' },
+    { type: 'section', title: 'Generale' },
+    { id: 'stroke', label: 'Spessore linee', min: 0.25, max: 6, step: 0.25, value: 1.75, unit: ' px' },
   ],
   build(p, fr = { ar: 1 }) {
     const N = p.num, dT = p.angle * Math.PI / 180, b = Math.log(p.growth) / Math.PI, rot = p.rot * Math.PI / 180, r0 = 2;
@@ -814,7 +856,7 @@ const spiral = {
     const jEnd = p.maxC >= 200 ? Infinity : jStart + p.maxC;
     const opAt = j => j < jEnd ? 0.9 : 0;
     const ringItem = a => ({ t: 'circle', b: 0, e: 0,
-      a: { opacity: 0.9, ...a, fill: 'none', stroke: LINE_PAINT, 'stroke-width': 1.8 * u } });
+      a: { opacity: 0.9, ...a, fill: 'none', stroke: LINE_PAINT, 'stroke-width': p.stroke * u } });
     const zoom = {
       type: 'flow',
       layers(phi, zo) {
@@ -1117,7 +1159,7 @@ function svgDocument(gen, vb, body, css = '') {
   const s = SVG_LONG_SIDE / Math.max(vb[2], vb[3]);
   const r = n => Math.round(n * 1000) / 1000;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb.map(r).join(' ')}" width="${Math.round(vb[2] * s)}" height="${Math.round(vb[3] * s)}">`
-    + `<defs>${gen.defs}${styleDefs(vb)}</defs>${css ? `<style>${css}</style>` : ''}${bgRect(vb)}${glowWrap(body)}</svg>`;
+    + `<defs>${gen.defs}${styleDefs(vb)}</defs>${css ? `<style>${css}</style>` : ''}${bgRect(vb)}${glowWrap(paintedBody(body, vb, 'lineMask'))}</svg>`;
 }
 
 /* =========================================================================
@@ -1219,7 +1261,7 @@ function isRotating(a, gen) { return a.loopOn && gen.sym && a.rot !== 0; }
    UI
    ========================================================================= */
 const $ = id => document.getElementById(id);
-const stageSvg = $('stage-svg'), stageDefs = $('stage-defs'), stageRoot = $('stage-root'), stageClip = $('stage-clip-rect'), stageOutline = $('stage-outline'), stageBg = $('stage-bg'), stageGlow = $('stage-glow'), glowRoot = $('glow-root');
+const stageSvg = $('stage-svg'), stageDefs = $('stage-defs'), stageRoot = $('stage-root'), stageClip = $('stage-clip-rect'), stageOutline = $('stage-outline'), stageBg = $('stage-bg'), stageGlow = $('stage-glow'), glowRoot = $('glow-root'), maskRoot = $('mask-root'), stageMask = $('stage-mask'), gradRect = $('grad-rect');
 
 function fmt(d, v) { return d.fmt ? d.fmt(v) : (Math.round(v * 1000) / 1000) + (d.unit || ''); }
 
@@ -1253,6 +1295,25 @@ function buildControls(container, defs, values, onChange, anim = null, onAnim = 
         if (values[d.id] === b.dataset.v) return;
         values[d.id] = b.dataset.v; onChange(d);
       }));
+    } else if (d.type === 'swatches') {
+      // editable gradient: one round picker per stop, a preview of the ramp, and a reset link
+      const cols = values[d.id];
+      el = document.createElement('div');
+      el.className = 'control-group';
+      el.innerHTML = `<label><span>${d.label}</span><button type="button" class="link-btn" title="Torna ai colori di partenza">Ripristina</button></label>
+        <div class="swatches">${cols.map((c, i) => `<input type="color" value="${c}" data-i="${i}" title="Colore ${i + 1}">`).join('')}</div>
+        <div class="grad-preview"></div>`;
+      const prev = el.querySelector('.grad-preview');
+      const paint = () => { prev.style.background = `linear-gradient(45deg, ${cols.join(', ')})`; };
+      paint();
+      el.querySelectorAll('.swatches input').forEach(inp => inp.addEventListener('input', e => {
+        cols[+e.target.dataset.i] = e.target.value; paint(); onChange(d);
+      }));
+      el.querySelector('.link-btn').addEventListener('click', () => {
+        d.defaults.forEach((c, i) => { cols[i] = c; });
+        el.querySelectorAll('.swatches input').forEach((inp, i) => { inp.value = cols[i]; });
+        paint(); onChange(d);
+      });
     } else if (d.type === 'color') {
       el = document.createElement('div');
       el.className = 'control-group';
@@ -1444,7 +1505,18 @@ function draw() {
   const amb = ambientOf(a, gen);
   amb.rotBase = (state.loops * amb.rotDeg) % 360;      // preview only: keep turning across restarts
   const frameSvg = renderFrame(model, g, phi, amb);
-  stageRoot.innerHTML = frameSvg;
+  // resolve the line paint (see paintedBody); only touch the DOM when the frame actually changed
+  const grad = style.line === 'gradient';
+  const html = resolveLines(frameSvg, grad ? '#ffffff' : solidLine());
+  if (html !== state.lastHtml || grad !== state.lastGrad) {
+    stageRoot.innerHTML = grad ? '' : html;
+    maskRoot.innerHTML = grad ? html : '';
+    gradRect.setAttribute('display', grad ? 'inline' : 'none');
+    state.lastHtml = html; state.lastGrad = grad;
+  }
+  for (const r of [stageMask, gradRect]) {
+    r.setAttribute('x', vb[0]); r.setAttribute('y', vb[1]); r.setAttribute('width', vb[2]); r.setAttribute('height', vb[3]);
+  }
   if (style.glow) {
     // same blur as the export filter, converted to the glow layer's (half-size) CSS pixels
     const r = stageSvg.getBoundingClientRect(), px = Math.min(r.width / vb[2], r.height / vb[3]) / 2;
@@ -1453,7 +1525,8 @@ function draw() {
     if (f !== state.glowCss) { stageGlow.style.filter = f; state.glowCss = f; }
     const vbs = vb.join(' ');
     if (stageGlow.getAttribute('viewBox') !== vbs) stageGlow.setAttribute('viewBox', vbs);
-    glowRoot.innerHTML = frameSvg;
+    const glowHtml = grad ? `<rect x="${vb[0]}" y="${vb[1]}" width="${vb[2]}" height="${vb[3]}" fill="url(#lineFill)" mask="url(#stage-mask)"/>` : html;
+    if (glowHtml !== state.lastGlow) { glowRoot.innerHTML = glowHtml; state.lastGlow = glowHtml; }
   }
   document.body.classList.toggle('no-anim', PL === 0);
   playBtn.disabled = PL === 0;
