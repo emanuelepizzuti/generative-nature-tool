@@ -433,7 +433,7 @@ const bgRect = vb => `<rect x="${vb[0]}" y="${vb[1]}" width="${vb[2]}" height="$
 const kochCrystal = {
   id: 'kochcrystal', name: 'Koch Crystal', file: 'Koch_Crystal', accent: ['#3cb4c2', '#2f94a1'],
   desc: 'Dendrite di ghiaccio a simmetria esagonale dentro un fiocco di Koch: i rami crescono mentre il contorno si dispiega.',
-  sym: 60, anim: { rot: 60, wave: 0, breathe: 0 }, zoomUnit: 'livelli', noBreathe: true,
+  sym: 60, anim: { rot: 60, wave: 0, breathe: 0 }, zoomUnit: 'livelli', noBreathe: true, sampleZoom: true,
   defs: '',
   params: [
     { type: 'section' },
@@ -506,7 +506,7 @@ const kochCrystal = {
     // first 1/(D+1) of the build-up traces the triangle, the rest unfolds one iteration after another
     const e0 = 1 / (D + 1);
     const factorsAt = g => Array.from({ length: D }, (_, k) => easeInOut(clamp01((g - e0) / (1 - e0) * D - k)));
-    const kochItem = { t: 'path', k: 'draw', b: 0, e: e0, bb: [cx, cy, R], a: { ...line, d: fullD } };
+    const kochItem = { t: 'path', k: 'draw', b: 0, e: e0, bb: [cx, cy, R], zoomFixed: true, a: { ...line, d: fullD } };
     if (D > 0) {
       kochItem.dyn = g => ({ d: g >= 1 ? fullD : pathD(factorsAt(g)) });
       kochItem.smil = dur => {
@@ -521,7 +521,10 @@ const kochCrystal = {
 
     return { layers: [{ a: {}, items }], pivot: [cx, cy], viewBox: () => [cx - S, cy - S, S * 2, S * 2], waveScale: 0,
       // nested copies at 1/3 scale, unrotated: the crystal arms of every copy line up
-      zoom: { type: 'copies', S: 3, A: 0, radius: Math.max(R, L), innerR: Math.min(R / Math.sqrt(3), L / (n + 0.5)), minR: p.stroke * u * 2 } };
+      zoom: { type: 'copies', S: 3, A: 0, radius: Math.max(R, L), innerR: Math.min(R / Math.sqrt(3), L / (n + 0.5)), minR: p.stroke * u * 2,
+              // each crystal grows for its whole visible life: its growth front is at 'g0' when the copy is
+              // 'from' x the frame and completes only once the copy is 'to' x the frame (past the corners)
+              grow: { from: 0.035, to: 1.15, g0: 0.015 } } };
   }
 };
 
@@ -692,6 +695,54 @@ function vorCells(P, gap, m, F) {
   return cells;
 }
 
+/*
+  VORONOI ZOOM (subdividing cells). The seeds come in layers; every layer is the same endless random
+  field Q scaled down by 2 relative to the previous one. While zooming by 2 per step, layer j is
+  drawn at scale 2^(z - j): each step layer j takes exactly the place of layer j-1, so the loop is
+  seamless. A layer is born while its spacing grows from 0.5 to 1 (in base units): its seeds get a
+  power-diagram weight that rises from very negative (empty cell) to 0, so each new cell grows from
+  a point inside its parent and splits it. Drift (Ampiezza movimento) is applied in base units with
+  whole cycles per loop, so it is seamless too.
+*/
+function vorHash(i, k, seed, salt) {
+  let h = (Math.imul(i, 374761393) + Math.imul(k, 668265263) + Math.imul(seed | 0, 2654435761 | 0) + Math.imul(salt, 1274126177)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+// seeds of the endless field (unit-spaced hex grid, jittered) inside a box, in base units
+function vorFieldPoints(x0, y0, x1, y1, reg, seed) {
+  const ry = Math.sqrt(3) / 2, J = 1 - 0.9 * reg, out = [];
+  for (let k = Math.floor(y0 / ry) - 1; k <= Math.ceil(y1 / ry) + 1; k++) {
+    for (let i = Math.floor(x0) - 1; i <= Math.ceil(x1) + 1; i++) {
+      const h = salt => vorHash(i, k, seed, salt);
+      const x = i + (k & 1) * 0.5 + (h(1) - 0.5) * J, y = k * ry + (h(2) - 0.5) * J * ry;
+      if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+      out.push({ x, y, p1: h(3) * TAU, p2: h(4) * TAU, f1: 1 + Math.floor(h(5) * 2), f2: 1 + Math.floor(h(6) * 2), dir: h(7) < 0.5 ? -1 : 1 });
+    }
+  }
+  return out;
+}
+// power-diagram cells (weights w; w = 0 for every seed gives plain Voronoi), inset by gap/2.
+// P: [{x, y, w, sp}] with sp = local spacing (to skip far pairs); box = outer clip rectangle
+function powerCells(P, gap, box) {
+  const cells = [];
+  for (let i = 0; i < P.length; i++) {
+    const s = P[i];
+    let poly = box;
+    for (let j = 0; j < P.length && poly.length; j++) {
+      if (j === i) continue;
+      const q = P[j], dx = q.x - s.x, dy = q.y - s.y, d2 = dx * dx + dy * dy, lim = 3 * Math.max(s.sp, q.sp);
+      if (d2 > lim * lim || d2 === 0) continue;
+      const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+      // power bisector: |x-s|^2 - ws <= |x-q|^2 - wq, moved gap/2 towards s
+      const c = ((q.x * q.x + q.y * q.y) - (s.x * s.x + s.y * s.y) + s.w - q.w) / (2 * d);
+      poly = clipHalf(poly, nx, ny, c - gap / 2);
+    }
+    cells.push(poly);
+  }
+  return cells;
+}
+
 // rounded outline: corners cut at fraction t (0..0.5) of each edge, joined by quadratic curves
 function roundedPath(poly, t) {
   const n = poly.length;
@@ -734,7 +785,7 @@ function roundedPolar(poly, t, cx, cy, M) {
 const wing = {
   id: 'wing', name: 'Voronoi Wing', file: 'Voronoi_Wing', accent: ['#e2e8f0', '#cbd5e0'],
   desc: 'Diagramma di Voronoi: ogni cella è la zona più vicina al suo seme. I semi si muovono e le celle si deformano.',
-  sym: 0, anim: { rot: 0, wave: 0, breathe: 0 }, noBreathe: true,
+  sym: 0, anim: { rot: 0, wave: 0, breathe: 0 }, noBreathe: true, zoomUnit: 'divisioni', sampleZoom: true,
   defs: '',
   params: [
     { type: 'section', title: 'Celle' },
@@ -767,11 +818,59 @@ const wing = {
     const order = pts.map(s => clamp01(Math.hypot(s.x - VOR_W / 2, s.y - VOR_H / 2) / (Math.hypot(fw, fh) / 2)) * 0.8);
     // white outlines on a black background; build-up = each outline is traced, centre first
     const line = { fill: 'none', stroke: LINE_PAINT, 'stroke-width': p.stroke, 'stroke-linejoin': 'round' };
+
+    // ---- subdividing zoom (see 'VORONOI ZOOM' above)
+    const CX = VOR_W / 2, CY = VOR_H / 2, hd = Math.hypot(fw, fh) / 2;
+    const a0 = 1240 / Math.sqrt(p.cells);                        // px per base unit at scale 1 (~'cells' per 1000x1000)
+    const SA = 0.5;                                               // a layer is born between scale 0.5 and 1
+    const fieldCache = new Map();
+    const fieldIn = r => {                                        // field seeds within radius r (base units), cached
+      const key = Math.ceil(r);
+      if (!fieldCache.has(key)) fieldCache.set(key, vorFieldPoints(-key, -key, key, key, p.reg / 100, p.seed));
+      return fieldCache.get(key);
+    };
+    const zoomSeeds = (phi, zo) => {
+      const z = zo.dir * zo.m * phi, out = [];
+      const jMax = Math.floor(z - Math.log2(SA)) + 1, jMin = Math.floor(z - Math.log2(4 * hd / a0)) - 1;
+      for (let j = jMin; j <= jMax; j++) {
+        const sg = Math.pow(2, z - j);
+        if (sg < SA) continue;
+        const mat = clamp01(Math.log2(sg / SA)), sp = a0 * sg, u = 1 - mat;
+        // weight: surely empty at birth (-17.5 sp^2, even next to the free centre), cells then grow in mid-loop
+        const w = -(1.5 * u + 16 * u ** 6) * sp * sp;
+        const reach = (hd + 2 * sp) / sp;                         // base-unit radius covering the frame
+        for (const q of fieldIn(reach)) {
+          // every layer is the same field scaled about the centre: the seeds nearest to the centre would
+          // line up along a ray across layers (thin parallel strips), so each layer leaves its centre free
+          if (q.x * q.x + q.y * q.y < 0.5625) continue;
+          const dx = amp / m * Math.sin(q.dir * q.f1 * TAU * phi + q.p1), dy = amp / m * Math.sin(q.dir * q.f2 * TAU * phi + q.p2);
+          const x = CX + sp * (q.x + dx), y = CY + sp * (q.y + dy);
+          if (x < F.x0 - 2 * sp || x > F.x1 + 2 * sp || y < F.y0 - 2 * sp || y > F.y1 + 2 * sp) continue;
+          out.push({ x, y, w, sp });
+        }
+      }
+      return out;
+    };
+    const zoomItems = (phi, zo) => {
+      const P = zoomSeeds(phi, zo), M = 400;
+      const box = [[F.x0 - M, F.y0 - M], [F.x1 + M, F.y0 - M], [F.x1 + M, F.y1 + M], [F.x0 - M, F.y1 + M]];
+      const cells = powerCells(P, p.gap, box), items = [];
+      cells.forEach((poly, i) => {
+        const d = poly.length >= 3 && roundedPath(poly, rt);
+        if (!d) return;
+        const o = clamp01(Math.hypot(P[i].x - CX, P[i].y - CY) / hd) * 0.8;
+        items.push({ t: 'path', k: 'draw', b: o, e: o + 0.2, a: { d, ...line } });
+      });
+      return items;
+    };
+
     return {
       layers: [{ a: {}, items: [] }],
       pivot: [VOR_W / 2, VOR_H / 2], viewBox: () => [0, 0, VOR_W, VOR_H], waveScale: 0,
+      zoom: { type: 'self' },                                    // the zoom is drawn by frameLayers itself
       // preview / PNG / still SVG: exact cell outlines
-      frameLayers(g, phi) {
+      frameLayers(g, phi, amb) {
+        if (amb && amb.zoom) return [{ a: {}, items: zoomItems(phi, amb.zoom) }];
         const P = pos(phi), cells = vorCells(P, p.gap, m, F), items = [];
         cells.forEach((poly, i) => {
           const d = poly.length >= 3 && roundedPath(poly, rt);
@@ -824,7 +923,7 @@ const spiral = {
       note: 'Inquadratura: valori più alti allontanano la vista (entrano più cerchi nel riquadro).' },
     { id: 'maxC', label: 'Numero massimo di cerchi', min: 5, max: 200, step: 1, value: 200, noAnim: true,
       fmt: v => v >= 200 ? 'tutti' : String(v),
-      note: 'Contati dal centro verso l\'esterno: oltre questo numero i cerchi più grandi spariscono di colpo prima di uscire dal riquadro.' },
+      note: 'Contati dal centro verso l\'esterno: oltre questo numero il cerchio più grande svanisce con una breve dissolvenza prima di uscire dal riquadro.' },
     { type: 'section', title: 'Spirale' },
     { id: 'angle', label: 'Passo angolare', min: 5, max: 45, step: 1, value: 20, unit: '°' },
     { id: 'growth', label: 'Fattore di crescita (Φ)', min: 1.1, max: 2.2, step: 0.01, value: 1.618 },
@@ -851,10 +950,12 @@ const spiral = {
       return Math.hypot(fx, fy) >= c.r;                                    // square not entirely inside ring
     };
     // max circles: counted outward from the first one big enough to see (~1 px); the ones beyond
-    // jEnd vanish instantly (only when the cap is reached before the frame edge)
+    // jEnd fade out over a short distance (FADE steps), so the last circle dissolves instead of
+    // blinking out; zooming out, the same circle fades in (only when the cap is reached before the frame edge)
     const jStart = Math.log(1 * u / (k * r0)) / bd;
     const jEnd = p.maxC >= 200 ? Infinity : jStart + p.maxC;
-    const opAt = j => j < jEnd ? 0.9 : 0;
+    const FADE = 2;
+    const opAt = j => 0.9 * smooth((jEnd - j) / FADE);
     const ringItem = a => ({ t: 'circle', b: 0, e: 0,
       a: { opacity: 0.9, ...a, fill: 'none', stroke: LINE_PAINT, 'stroke-width': p.stroke * u } });
     const zoom = {
@@ -952,11 +1053,13 @@ function xfStr([px, py], s, rot, css = false) {
 // Items -> SVG string. k scales stroke widths (constant-thickness zoom); cull(bb) skips items.
 function renderItems(items, g, phi, amb, model, k = 1, cull = null) {
   let out = '';
-  for (const it of items) {
+  for (const it0 of items) {
+    const it = it0;
     if (cull && (it.noZoom || cull(itemBB(it)))) continue;
-    const local = it.e > it.b ? clamp01((g - it.b) / (it.e - it.b)) : (g >= it.b ? 1 : 0);
+    const gi = it.zoomFixed && amb.gGlobal != null ? amb.gGlobal : g;   // e.g. Koch outline in a growing zoom
+    const local = it.e > it.b ? clamp01((gi - it.b) / (it.e - it.b)) : (gi >= it.b ? 1 : 0);
     if (local <= 0) continue;
-    const a = it.dyn ? { ...it.a, ...it.dyn(g) } : { ...it.a };
+    const a = it.dyn ? { ...it.a, ...it.dyn(gi) } : { ...it.a };
     let op = 1;
     if (local < 1 && it.k) {
       if (it.k === 'draw') {
@@ -993,9 +1096,20 @@ function renderFrame(model, g, phi, amb) {
     out = renderLayers(model.zoom.layers(phi, zo), g, phi, amb, model);
   } else if (zo) {
     const Lv = copyLevels(model), [px, py] = model.pivot, zc = model.zoom;
+    // growing copies (zc.grow): each copy keeps growing (its own build-up) until it is past the frame,
+    // so no crystal is ever seen finished. The growth front expands exponentially with z (gz = e^(c(z-zEnd))):
+    // the same relative pace at every size, like the zoom itself. Depends only on z -> seamless
+    let zEnd = 0, gc = 0;
+    if (zc.grow) {
+      const lS = Math.log(zc.S), gw = zc.grow;
+      zEnd = Math.log(gw.to * Lv.hd / zc.radius) / lS;
+      gc = Math.log(1 / gw.g0) / (zEnd - Math.log(gw.from * Lv.hd / zc.radius) / lS);
+      amb = { ...amb, gGlobal: g };
+    }
     for (let i = Lv.iMin - zo.m; i <= Lv.iMax + zo.m; i++) {
       const z = i + zo.dir * zo.m * phi;
       if (z < Lv.iMin || z > Lv.iMax) continue;
+      const gz = zc.grow ? Math.min(g, Math.exp(Math.min(0, gc * (z - zEnd)))) : g;
       const s = Math.pow(zc.S, z), rot = zc.A * z, cr = Math.cos(rot * Math.PI / 180), sr = Math.sin(rot * Math.PI / 180);
       const cull = bb => {
         if (!bb) return false;
@@ -1004,7 +1118,7 @@ function renderFrame(model, g, phi, amb) {
         const dx = (bb[0] - px) * s, dy = (bb[1] - py) * s;
         return Math.hypot(px + dx * cr - dy * sr - Lv.vc[0], py + dx * sr + dy * cr - Lv.vc[1]) > Lv.hd + r;
       };
-      out += `<g transform="${xfStr(model.pivot, s, rot)}">${renderLayers(model.layers, g, phi, amb, model, 1 / s, cull)}</g>`;
+      out += `<g transform="${xfStr(model.pivot, s, rot)}">${renderLayers(model.layers, gz, phi, amb, model, 1 / s, cull)}</g>`;
     }
   } else {
     out = renderLayers(model.layers, g, phi, amb, model);
@@ -1572,7 +1686,8 @@ $('exp-svg').addEventListener('click', () => {
 $('exp-svg-anim').addEventListener('click', () => {
   const gen = state.gen, a = A(), model = modelAt(0);
   const vb = model.viewBox(isRotating(a, gen));
-  const { css, body } = hasParamAnim() && timing(a).L ? renderSampled(a, gen, vb) : renderAnimated(model, a, gen);
+  const sampled = timing(a).L && (hasParamAnim() || (gen.sampleZoom && ambientOf(a, gen).zoom));
+  const { css, body } = sampled ? renderSampled(a, gen, vb) : renderAnimated(model, a, gen);
   download(svgBlob(svgDocument(gen, vb, body, css)), `${gen.file}_animato.svg`);
 });
 
