@@ -791,7 +791,7 @@ function roundedPolar(poly, t, cx, cy, M) {
 const wing = {
   id: 'wing', name: 'Voronoi Wing', file: 'Voronoi_Wing', accent: ['#e2e8f0', '#cbd5e0'],
   desc: 'Diagramma di Voronoi: ogni cella è la zona più vicina al suo seme. I semi si muovono e le celle si deformano.',
-  sym: 0, anim: { rot: 0, wave: 0, breathe: 0 }, noBreathe: true, zoomUnit: 'divisioni', sampleZoom: true,
+  sym: 0, anim: { rot: 0, wave: 0, breathe: 0, loopDur: 14 }, noBreathe: true, zoomUnit: 'divisioni', sampleZoom: true,
   defs: '',
   params: [
     { type: 'section', title: 'Celle' },
@@ -1511,7 +1511,7 @@ function animDefs(gen) {
     { id: 'growDur', label: 'Durata crescita', min: 1, max: 15, step: 0.5, unit: 's', when: v => v.growOn },
     { type: 'section' },
     { id: 'loopOn', type: 'checkbox', label: 'Loop ambientale', when: () => !gen.alwaysZoom },
-    { id: 'loopDur', label: 'Durata loop', min: 2, max: 20, step: 0.5, unit: 's', when: v => v.loopOn },
+    { id: 'loopDur', label: 'Durata loop', min: 2, max: 40, step: 0.5, unit: 's', when: v => v.loopOn },
     { id: 'rot', label: 'Rotazione per loop', min: -360, max: 360, step: 1, when: v => v.loopOn && gen.sym,
       fmt: v => v === 0 ? 'ferma' : `${v}°`,
       note: `Nell'anteprima ruota senza scatti a qualsiasi valore. Negli export il loop si chiude perfettamente solo a 0° o multipli di ${gen.sym}°.` },
