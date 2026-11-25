@@ -205,6 +205,7 @@
   button.btn.secondary { background: transparent; color: #fff; border-color: rgba(255,255,255,.35); }
   button.btn.secondary:hover { border-color: #fff; background: rgba(255,255,255,.08); }
   button.btn:disabled { opacity: .45; cursor: wait; }
+  button.btn.btn-sm { padding: 6px 12px; font-size: 12px; }
   #status { min-height: 0; color: var(--muted); }
 
   /* ---------- too-small window: easter egg overlay ---------- */
@@ -276,6 +277,11 @@
       <button class="btn" id="exp-svg">Scarica SVG</button>
       <button class="btn secondary" id="exp-svg-anim">SVG animato</button>
       <button class="btn secondary" id="exp-png">Sequenza PNG</button>
+    </div>
+    <div class="export-row preset-row">
+      <button class="btn secondary btn-sm" id="preset-exp" title="Salva stile, parametri e animazione di questa pagina in un file .json">Esporta preset</button>
+      <button class="btn secondary btn-sm" id="preset-imp" title="Carica un preset .json (passa alla sua pagina)">Importa preset</button>
+      <input type="file" id="preset-file" accept=".json,application/json" hidden>
     </div>
     <small id="png-note"></small>
     <small id="status"></small>
@@ -1690,6 +1696,60 @@ $('exp-svg-anim').addEventListener('click', () => {
   const { css, body } = sampled ? renderSampled(a, gen, vb) : renderAnimated(model, a, gen);
   download(svgBlob(svgDocument(gen, vb, body, css)), `${gen.file}_animato.svg`);
 });
+
+/* ---------- presets: style + parameters + animation of one page, as JSON ---------- */
+const PRESET_KIND = 'generative-nature-tool/preset';
+$('preset-exp').addEventListener('click', () => {
+  const gen = state.gen;
+  const data = { kind: PRESET_KIND, version: 1, page: gen.id, pageName: gen.name, format: state.format,
+    style: JSON.parse(JSON.stringify(style)), params: { ...P() }, animation: { ...A() },
+    paramAnimation: JSON.parse(JSON.stringify(Object.fromEntries(Object.entries(PA()).filter(([, st]) => st.on)))) };
+  download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${gen.file}_preset.json`);
+  $('status').textContent = 'Preset esportato.';
+});
+$('preset-imp').addEventListener('click', () => { $('preset-file').value = ''; $('preset-file').click(); });
+$('preset-file').addEventListener('change', async e => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  try { applyPreset(JSON.parse(await file.text())); }
+  catch (err) { $('status').textContent = `Preset non valido: ${err.message}`; }
+});
+// copy only known keys with the same type; numbers are clamped to the control's range
+function mergeKnown(target, src, defs) {
+  if (!src || typeof src !== 'object') return;
+  for (const k of Object.keys(target)) {
+    if (!(k in src)) continue;
+    const v = src[k], cur = target[k], d = defs && defs.find(x => x.id === k);
+    if (typeof cur === 'number' && typeof v === 'number' && isFinite(v)) {
+      target[k] = d && d.min !== undefined ? Math.min(d.max, Math.max(d.min, v)) : v;
+    } else if (Array.isArray(cur) && Array.isArray(v) && v.every(x => typeof x === typeof cur[0])) target[k] = [...v];
+    else if (typeof cur === typeof v && !Array.isArray(cur)) target[k] = v;
+  }
+}
+function applyPreset(data) {
+  if (!data || data.kind !== PRESET_KIND) throw new Error('non è un preset di Generative Nature Tool');
+  const gen = GENERATORS.find(g => g.id === data.page);
+  if (!gen) throw new Error(`pagina sconosciuta "${data.page}"`);
+  state.gen = gen;
+  mergeKnown(state.values[gen.id], data.params, gen.params);
+  mergeKnown(state.anims[gen.id], data.animation, animDefs(gen));
+  mergeKnown(style, data.style, STYLE_DEFS);
+  const pa = pAnim[gen.id];
+  for (const k in pa) delete pa[k];
+  for (const [id, st] of Object.entries(data.paramAnimation || {})) {
+    const d = gen.params.find(x => x.id === id);
+    if (!d || !isAnimatable(d) || !st || typeof st.from !== 'number' || typeof st.to !== 'number') continue;
+    const cl = v => Math.min(d.max, Math.max(d.min, v));
+    pa[id] = { on: true, from: cl(st.from), to: cl(st.to), curve: st.curve === 'linear' ? 'linear' : 'smooth', mult: Math.min(4, Math.max(1, Math.round(st.mult || 1))) };
+    state.values[gen.id][id] = pa[id].from;
+  }
+  if (data.format in FORMATS) setFormat(data.format);
+  state.modelDirty = true; state.tau = 0; state.dirty = true; state.styleDefsStr = null;
+  renderPanels();
+  const a = A();
+  setPlaying(!!(a.growOn || a.loopOn));
+  $('status').textContent = `Preset caricato: ${gen.name}.`;
+}
 
 function loadImage(src) {
   return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
